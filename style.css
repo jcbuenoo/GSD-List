@@ -1,0 +1,32 @@
+html {
+  font-family: "Avenir Next", Helevetica, sans-serif; /* This section is responsible for the fonts and the alignment of the text in the center*/
+  text-align: center;
+}
+
+body {
+  margin-width: 500px;  /* This section is responsible for the white space on the sides */
+  margin: 0 auto;
+}
+
+input {
+  padding-top: 30px;  /* This section is responsible for the details in the HTML input (the user input and placeholder text) */
+  width: 500px;
+  height: 60px;
+  font-size: 40px;
+  border: 0;
+}
+
+input:focus {
+  outline: none;  /* This section ?? */
+}
+
+li {
+  text-align: left;  /* This section is also connected to JavaScript */
+  font-size: 40px;
+  list-style: none;
+  margin: 0;
+}
+
+li:hover {
+  text-decoration: line-through;  /* This section is connected to JavaScript */
+}
