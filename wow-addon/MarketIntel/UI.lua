@@ -223,7 +223,7 @@ end
 ---------------------------------------------------------------------------
 local function ItemLabel(key, name, quality)
 	local item = key and ns.History.GetItem(key)
-	name = name or (item and item.n) or tostring(key)
+	name = name or (key and ns.History.GetName(key)) or ("item " .. tostring(key))
 	quality = quality or (item and item.q)
 	local color = ITEM_QUALITY_COLORS and quality and ITEM_QUALITY_COLORS[quality]
 	if color and color.hex then return color.hex .. name .. "|r" end
@@ -486,8 +486,8 @@ local function BuildHistory(page)
 	hint:SetText("search")
 
 	page.list = UI.CreateList(page, {
-		{ title = "Item", width = 170, text = function(e) return ItemLabel(e.key) end, sort = function(e) return e.name end, defaultAsc = true },
-		{ title = "Market", width = 80, justify = "RIGHT", text = function(e) return ns.FormatMoney(e.latest and e.latest.mkt) end, sort = function(e) return e.latest and e.latest.mkt or 0 end },
+		{ title = "Item", width = 182, text = function(e) return ItemLabel(e.key) end, sort = function(e) return e.name end, defaultAsc = true },
+		{ title = "Market", width = 70, justify = "RIGHT", text = function(e) return ns.FormatMoney(e.latest and e.latest.mkt) end, sort = function(e) return e.latest and e.latest.mkt or 0 end },
 	}, 18, {
 		icons = IconFor,
 		onClick = function(e) page:Select(e.key) end,
@@ -576,7 +576,8 @@ local function BuildHistory(page)
 		if l then
 			L[#L + 1] = line("Min buyout", ns.FormatMoney(l.min))
 			L[#L + 1] = line("Market", ns.FormatMoney(l.mkt))
-			L[#L + 1] = line("Seen", ns.FormatAge(now - l.t) .. " ago" .. (l.full and "" or " (partial)"))
+			local age = now - l.t
+			L[#L + 1] = line("Seen", (age < 60 and "just now" or (ns.FormatAge(age) .. " ago")) .. (l.full and "" or " (partial)"))
 		end
 		L[#L + 1] = line("7d avg", ns.FormatMoney(st.avg7))
 		L[#L + 1] = line("30d avg", ns.FormatMoney(st.avg30))
@@ -587,7 +588,9 @@ local function BuildHistory(page)
 
 		local R = {}
 		R[#R + 1] = line("Normal price", ref and (ns.FormatMoney(ref) .. " (" .. source .. ")") or "need more days")
-		R[#R + 1] = line("Auctionator", ns.FormatMoney(ns.Integrations.GetAuctionatorPrice(key)))
+		if ns.Integrations.HasAuctionator() then
+			R[#R + 1] = line("Auctionator", ns.FormatMoney(ns.Integrations.GetAuctionatorPrice(key)))
+		end
 		if ns.Integrations.HasTSM() then R[#R + 1] = line("TSM market", ns.FormatMoney(ns.Integrations.GetTSMPrice(key))) end
 		local d = ns.Analysis.GetDepth(key, now)
 		if d then
@@ -714,17 +717,30 @@ end
 -- Settings tab
 ---------------------------------------------------------------------------
 local NUMBER_SETTINGS = {
-	{ key = "dealPct", label = "Deal threshold (% of normal)", lo = 5, hi = 100 },
-	{ key = "minDealProfit", label = "Minimum saving per deal (gold)", lo = 0, hi = 100000, gold = true },
-	{ key = "minHistoryDays", label = "Days of history before trusting it", lo = 1, hi = 14 },
-	{ key = "rawDays", label = "Keep every snapshot for (days)", lo = 1, hi = 14 },
-	{ key = "keepDays", label = "Keep daily history for (days)", lo = 7, hi = 365 },
-	{ key = "minQuality", label = "Minimum item quality (0 grey - 4 epic)", lo = 0, hi = 5 },
-	{ key = "floodSellers", label = "Sellers for Flooded", lo = 2, hi = 100 },
-	{ key = "crowdSellers", label = "Sellers for Crowded", lo = 2, hi = 100 },
-	{ key = "floodRatio", label = "Supply ratio for Flooded", lo = 1, hi = 10, decimal = true },
-	{ key = "crowdRatio", label = "Supply ratio for Crowded", lo = 1, hi = 10, decimal = true },
-	{ key = "thinRatio", label = "Supply ratio for Thin", lo = 0.05, hi = 1, decimal = true },
+	{ key = "dealPct", label = "Deal threshold (% of normal)", lo = 5, hi = 100,
+		tip = "A listing is a deal when its price per item is at or below this percentage of the normal price." },
+	{ key = "minDealProfit", label = "Minimum saving per deal (gold)", lo = 0, hi = 100000, gold = true,
+		tip = "Ignore deals that save less than this per auction, so cheap items do not spam alerts." },
+	{ key = "minHistoryDays", label = "Days of history before trusting it", lo = 1, hi = 14,
+		tip = "How many past days of prices an item needs before its normal price is used for deals." },
+	{ key = "rawDays", label = "Keep every snapshot for (days)", lo = 1, hi = 14,
+		tip = "Individual scans are kept this long (used for price-war detection), then merged into one entry per day." },
+	{ key = "keepDays", label = "History for searched/watched items (days)", lo = 7, hi = 365,
+		tip = "Daily history kept for items you search for or watch." },
+	{ key = "scanKeepDays", label = "History for full-scan-only items (days)", lo = 4, hi = 365,
+		tip = "Daily history kept for items only ever seen in full scans. Lower this if your saved data gets large." },
+	{ key = "minQuality", label = "Minimum item quality (0 grey - 4 epic)", lo = 0, hi = 5,
+		tip = "Items below this quality are not recorded. 1 skips grey junk." },
+	{ key = "floodSellers", label = "Sellers for Flooded", lo = 2, hi = 100,
+		tip = "An item with at least this many sellers is rated Flooded." },
+	{ key = "crowdSellers", label = "Sellers for Crowded", lo = 2, hi = 100,
+		tip = "An item with at least this many sellers is rated Crowded." },
+	{ key = "floodRatio", label = "Supply ratio for Flooded", lo = 1, hi = 10, decimal = true,
+		tip = "Flooded when the units on sale are at least this many times the item's normal supply." },
+	{ key = "crowdRatio", label = "Supply ratio for Crowded", lo = 1, hi = 10, decimal = true,
+		tip = "Crowded when the units on sale are at least this many times the item's normal supply." },
+	{ key = "thinRatio", label = "Supply ratio for Thin", lo = 0.05, hi = 1, decimal = true,
+		tip = "Thin when the units on sale are at most this fraction of the item's normal supply." },
 }
 local BOOL_SETTINGS = {
 	{ key = "alertChat", label = "Print deals in chat" },
@@ -757,6 +773,13 @@ local function BuildSettings(page)
 		local eb = EditBox(page, 70)
 		eb:SetPoint("TOPLEFT", x + 250, y)
 		eb.def = def
+		eb:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetText(def.label)
+			GameTooltip:AddLine(def.tip, 1, 1, 1, true)
+			GameTooltip:Show()
+		end)
+		eb:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		local function Apply(self)
 			local v = tonumber(self:GetText())
 			if v then
@@ -787,6 +810,9 @@ local function BuildSettings(page)
 		for k, v in pairs(ns.DEFAULTS) do ns.settings[k] = v end
 		page:Update()
 	end):SetPoint("BOTTOMLEFT", 150, 0)
+	Button(page, "Import from Auctionator", 170, function()
+		ns.Integrations.ImportAuctionator(true)
+	end):SetPoint("BOTTOMLEFT", 280, 0)
 	Button(page, "Delete all history", 140, function()
 		StaticPopup_Show("MARKETINTEL_RESET")
 	end):SetPoint("BOTTOMRIGHT", 0, 0)
@@ -832,7 +858,7 @@ end
 local function CreateMain()
 	frame = CreateFrame("Frame", "MarketIntelFrame", UIParent, BACKDROP_TEMPLATE)
 	frame:SetSize(WIDTH, HEIGHT)
-	frame:SetPoint("CENTER")
+	UI.PlaceWindow()
 	frame:SetFrameStrata("HIGH")
 	frame:SetToplevel(true)
 	frame:EnableMouse(true)
@@ -840,7 +866,11 @@ local function CreateMain()
 	frame:SetClampedToScreen(true)
 	frame:RegisterForDrag("LeftButton")
 	frame:SetScript("OnDragStart", frame.StartMoving)
-	frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+	frame:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+		local point, _, relPoint, x, y = self:GetPoint()
+		ns.settings.windowPos = { point, relPoint, x, y }
+	end)
 	if frame.SetBackdrop then
 		frame:SetBackdrop({
 			bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -864,7 +894,7 @@ local function CreateMain()
 		tabButtons[tab] = b
 		local page = CreateFrame("Frame", nil, frame)
 		page:SetPoint("TOPLEFT", 20, -70)
-		page:SetPoint("BOTTOMRIGHT", -20, 30)
+		page:SetPoint("BOTTOMRIGHT", -20, 34)
 		page:Hide()
 		BUILDERS[tab](page)
 		pages[tab] = page
@@ -877,8 +907,24 @@ local function CreateMain()
 	frame:SetScript("OnShow", function() UI.Refresh(true) end)
 end
 
+-- Saved position if the window was ever moved; otherwise beside the auction
+-- house when it is open (so it does not cover it), else the screen centre.
+function UI.PlaceWindow()
+	if not frame then return end
+	frame:ClearAllPoints()
+	local pos = ns.settings.windowPos
+	if pos then
+		frame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
+	elseif AuctionFrame and AuctionFrame:IsShown() then
+		frame:SetPoint("TOPLEFT", AuctionFrame, "TOPRIGHT", 120, 0)
+	else
+		frame:SetPoint("CENTER")
+	end
+end
+
 function UI.Show(tab)
-	if not frame then CreateMain() end
+	if not frame then CreateMain()
+	elseif not frame:IsShown() then UI.PlaceWindow() end
 	if tab and pages[tab] then currentTab = tab end
 	for name, page in pairs(pages) do
 		if name == currentTab then page:Show() else page:Hide() end

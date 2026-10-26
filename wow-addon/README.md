@@ -10,18 +10,26 @@ It adds three things:
 
 ## Install
 
-1. Copy the `MarketIntel` folder into `World of Warcraft/_anniversary_/Interface/AddOns/`. The client folder may be named differently, such as `_classic_`.
+1. Download `dist/MarketIntel-1.1.0.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
 2. Restart the game. If the addon shows as "out of date", tick **Load out of date AddOns** on the character-select AddOns screen. To see your client's interface number, run `/dump select(4, GetBuildInfo())`. Then update the `## Interface:` line in `MarketIntel.toc` to match.
 
 ## Getting data
 
 You don't need to do anything special. Every time the auction house shows results, Market Intel reads them. That includes your own searches, Auctionator's shopping lists, Auctionator's **Full Scan**, TSM searches and the default Browse tab.
 
-- **Full scan** (best). Auctionator's full scan reads the whole AH in one go, about once every 15 minutes. Market Intel reads those results in the background, 1,000 rows per frame, so the game doesn't freeze.
+- **Full scan** (best). Auctionator's full scan reads the whole AH in one go, about once every 15 minutes. Market Intel reads and saves those results in the background, using about 8 ms per frame, so the game doesn't freeze.
 - **Normal searches.** Pages of the same search are merged. If you only looked at page 1 of 3, that snapshot is marked *partial*: its prices are used, but its supply numbers are not.
 - **Watchlist scan.** `/mi scan`, or the button on the Watchlist tab, searches each watched item by exact name, every page.
 
 Each auction house is tracked separately: your faction's AH, plus the neutral AH in Gadgetzan, Booty Bay and Everlook.
+
+### Starting with Auctionator's history
+Auctionator already keeps a record of the lowest price it saw each day. The first time you log in with no Market Intel data, the addon copies that history over automatically, so normal prices and deal alerts work from day one instead of after 3 days. You can run it again any time with `/mi import` or the **Import from Auctionator** button in Settings.
+
+- Days Market Intel already has are never overwritten.
+- Auctionator only records prices and quantity, not sellers. Imported days count toward the normal price and normal supply.
+- Gear that Auctionator tracks per item level is skipped.
+- If Auctionator's saved format isn't the one expected, the import says so and changes nothing.
 
 ## How it works
 
@@ -33,7 +41,14 @@ For every item and every scan, Market Intel stores:
 - units on sale, auctions, sellers;
 - the "wall": units within 5% of the minimum.
 
-Every scan is kept for 3 days, then merged into one summary per day, which is kept for 90 days. Searching the same item again within 10 minutes replaces the snapshot instead of adding another. About 110 bytes are saved per item.
+Every scan is kept for 2 days, then merged into one summary per day. Searching the same item again within 30 minutes replaces the snapshot instead of adding another.
+
+How long daily history is kept depends on how the item was seen:
+
+- items you **searched for or watch**: 60 days;
+- items only ever seen in **full scans**: 21 days.
+
+Both can be changed in Settings. With these defaults, a big server where 10,000 items show up in full scans every day uses about 8 MB of saved data after a month.
 
 **History tab:** search for an item to see:
 
@@ -78,6 +93,7 @@ It also flags:
 /mi unwatch <item>
 /mi scan                 scan the watchlist (AH must be open)
 /mi bags                 depth check for your bags
+/mi import               copy Auctionator's price history
 /mi stats | purge | reset
 ```
 
@@ -92,7 +108,13 @@ luacheck MarketIntel
 
 The tests run the real addon files inside a mock WoW client (`tests/wowmock.lua`). The mock simulates the auction house, item links, saved variables, tooltips and UI widgets.
 
-They cover data capture, merging pages, history and compaction, deal and depth logic, full and watchlist scans, closing the AH mid-scan, the neutral AH, saved-variable round-trips, Auctionator/TSM integration, and clicking through every tab.
+They cover data capture, merging pages, history and compaction, deal and depth logic, full and watchlist scans, closing the AH mid-scan, the neutral AH, saved-variable round-trips, the Auctionator import, Auctionator/TSM integration, and clicking through every tab.
+
+Extra tools:
+
+- `lua5.1 tests/layout_export.lua <dir>` then `node tests/render_layout.js <dir>`: works out where every element sits on screen, draws each tab in Chromium as a screenshot, and reports clipped text, overlapping controls and anything outside the window.
+- `lua5.1 tests/bench_scan.lua`: how long each frame takes while a 40,000-auction full scan is saved.
+- `lua5.1 tests/bench_storage.lua`: saved-data size after a month of full scans.
 
 ## Known limitations
 
@@ -109,4 +131,5 @@ The tests use a mock client, so these details are written from the TBC Classic /
 - The return order of `GetAuctionItemInfo` (item ID as the 17th value), and the exact-match argument of `QueryAuctionItems` (8th).
 - Map IDs used to detect the neutral AH: 1446 Tanaris, 1434 Stranglethorn, 1452 Winterspring.
 - Auctionator's `MultiSearchExact` API. If it's missing, row clicks fall back to the default Browse search.
-- The layout itself. Sizes and positions were checked by hand but not looked at on screen.
+- Auctionator's saved price format (`AUCTIONATOR_PRICE_DATABASE`) and its day numbering, used by the import.
+- The layout was drawn and checked in a browser with a similar font, not in the game itself. WoW's font is a little different, so very long item names may cut off at slightly different points.

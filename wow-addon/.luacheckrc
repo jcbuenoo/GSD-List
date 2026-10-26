@@ -11,8 +11,8 @@ read_globals = {
 	"YES", "NO", "PlaySound", "SOUNDKIT", "Auctionator", "TSM_API", "CanSendAuctionQuery", "QueryAuctionItems",
 	"AuctionFrameTab1", "AuctionFrameTab_OnClick", "BrowseName", "NUM_AUCTION_ITEMS_PER_PAGE",
 	"GetAuctionItemInfo", "GetAuctionItemLink", "GetNumAuctionItems", "TooltipDataProcessor", "Enum",
-	"GameTooltip", "ItemRefTooltip", "BackdropTemplateMixin", "ChatEdit_InsertLink", "FauxScrollFrame_OnVerticalScroll",
+	"GameTooltip", "ItemRefTooltip", "BackdropTemplateMixin", "AUCTIONATOR_PRICE_DATABASE", "ChatEdit_InsertLink", "FauxScrollFrame_OnVerticalScroll",
 	"FauxScrollFrame_Update", "FauxScrollFrame_GetOffset", "IsShiftKeyDown", "UISpecialFrames", "AuctionFrame",
-	"_G",
+	"_G", "debugprofilestop",
 }
 self = false

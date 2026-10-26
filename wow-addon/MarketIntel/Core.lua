@@ -2,7 +2,7 @@
 local ADDON, ns = ...
 
 ns.name = ADDON or "MarketIntel"
-ns.version = "1.0.0"
+ns.version = "1.1.0"
 
 local floor, format, tostring, tonumber, type, pairs = math.floor, string.format, tostring, tonumber, type, pairs
 
@@ -13,10 +13,11 @@ ns.DEFAULTS = {
 	alertChat = true,
 	alertSound = true,
 	tooltip = true,
-	rawDays = 3,             -- keep every snapshot this many days, then fold into daily summaries
-	keepDays = 90,           -- delete daily summaries older than this
+	rawDays = 2,             -- keep every snapshot this many days, then fold into daily summaries
+	keepDays = 60,           -- history kept for items you search or watch
+	scanKeepDays = 21,       -- history kept for items only ever seen in full scans
 	minQuality = 1,          -- skip grey (poor) items
-	replaceWindow = 600,     -- seconds; a new snapshot this close to the previous one replaces it
+	replaceWindow = 1800,    -- seconds; a new snapshot this close to the previous one replaces it
 	floodRatio = 2.0,        -- supply vs normal at which an item is "Flooded"
 	crowdRatio = 1.4,
 	thinRatio = 0.5,
@@ -25,7 +26,7 @@ ns.DEFAULTS = {
 	useTSMFallback = true,   -- use TSM DBMarket as the normal price while our own history is too short
 }
 
-local DB_VERSION = 1
+local DB_VERSION = 2 -- version 2: compact base-36 history strings
 
 ---------------------------------------------------------------------------
 -- Printing / formatting
@@ -63,7 +64,7 @@ end
 -- Parse "12g", "12.5", "12g 30s", "30s", "5c" into copper. A bare number means gold.
 function ns.ParseMoney(text)
 	if not text then return nil end
-	text = text:lower():gsub("%s+", "")
+	text = text:lower():gsub("[%s,]+", "")
 	if text == "" then return nil end
 	local bare = tonumber(text)
 	if bare then return floor(bare * 10000 + 0.5) end
@@ -154,8 +155,17 @@ function ns.Median(list)
 	return (copy[n / 2] + copy[n / 2 + 1]) / 2
 end
 
+-- Local calendar day as YYYYMMDD. date() is slow, so results are cached per
+-- 15 minutes (every real time zone changes date on a 15-minute boundary).
+local dayKeyCache = {}
 function ns.DayKey(t)
-	return tonumber(date("%Y%m%d", t))
+	local bucket = floor(t / 900)
+	local day = dayKeyCache[bucket]
+	if not day then
+		day = tonumber(date("%Y%m%d", bucket * 900))
+		dayKeyCache[bucket] = day
+	end
+	return day
 end
 
 -- Noon of a YYYYMMDD day, as a timestamp (used for weekday maths and day ages).
@@ -206,6 +216,43 @@ function ns.RunTask(fn)
 	tasks[#tasks + 1] = fn
 end
 
+-- Per-frame time budget for background work, in milliseconds.
+local clock = debugprofilestop or function() return GetTime() * 1000 end
+local FRAME_BUDGET = 8
+local budgetStart = 0
+function ns.OverBudget()
+	return clock() - budgetStart > FRAME_BUDGET
+end
+
+-- Run fn(yield) as a background job that pauses whenever the frame budget is
+-- used up and continues next frame. onDone(ok) runs when it finishes.
+function ns.RunJob(fn, onDone)
+	local co = coroutine.create(fn)
+	ns.RunTask(function()
+		budgetStart = clock()
+		local ok, err = coroutine.resume(co, coroutine.yield)
+		if not ok then
+			geterrorhandler()(err)
+			if onDone then onDone(false) end
+			return true
+		end
+		if coroutine.status(co) == "dead" then
+			if onDone then onDone(true) end
+			return true
+		end
+		return false
+	end)
+end
+
+function ns.StartFrameBudget()
+	budgetStart = clock()
+end
+
+-- Inside a job: give the frame back if the budget is used up.
+function ns.Checkpoint(yield)
+	if yield and ns.OverBudget() then yield() end
+end
+
 eventFrame:SetScript("OnUpdate", function()
 	local now = GetTime()
 	for i = #timers, 1, -1 do
@@ -247,7 +294,10 @@ end
 function ns.InitDB()
 	if type(MarketIntelDB) ~= "table" then MarketIntelDB = {} end
 	local db = MarketIntelDB
-	db.version = db.version or DB_VERSION
+	if db.version ~= DB_VERSION then
+		db.realms = nil -- older test builds used a different history format
+		db.version = DB_VERSION
+	end
 	db.settings = db.settings or {}
 	for k, v in pairs(ns.DEFAULTS) do
 		if db.settings[k] == nil then db.settings[k] = v end
@@ -278,7 +328,7 @@ ns.On("PLAYER_LOGIN", function()
 	if not ns.db then ns.InitDB() end
 	ns.playerName = UnitName("player")
 	ns.SetAuctionHouse(ns.GetAuctionHouseKey())
-	ns.History.Compact(time())
+	ns.History.Compact(time(), true)
 	ns.Fire("MI_READY")
 end)
 
@@ -293,6 +343,7 @@ local HELP = {
 	"/mi scan - scan your watchlist (auction house must be open)",
 	"/mi bags - market depth check for items in your bags",
 	"/mi stats - how much data is stored",
+	"/mi import - copy Auctionator's price history into Market Intel",
 	"/mi purge - compact old data now",
 	"/mi reset - delete all price history for this auction house",
 }
@@ -345,6 +396,8 @@ function ns.HandleSlash(input)
 	elseif cmd == "stats" then
 		local items, snaps, days = ns.History.CountData()
 		ns.Print("%s: %d items, %d recent snapshots, %d daily summaries.", ns.realmKey, items, snaps, days)
+	elseif cmd == "import" then
+		ns.Integrations.ImportAuctionator(true)
 	elseif cmd == "purge" then
 		ns.History.Compact(time())
 		ns.Print("old data compacted.")
@@ -366,6 +419,7 @@ StaticPopupDialogs.MARKETINTEL_RESET = {
 	button2 = NO or "No",
 	OnAccept = function()
 		ns.realm.items = {}
+		ns.History.ResetIndex()
 		ns.Fire("MI_DATA_UPDATED")
 		ns.Print("price history for %s deleted.", ns.realmKey)
 	end,

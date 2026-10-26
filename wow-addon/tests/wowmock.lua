@@ -31,6 +31,8 @@ function M.reset()
 	M.mapID, M.bags, M.itemInfo, M.focus, M.shift, M.popup, M.ahOpen = 1453, {}, {}, nil, nil, nil, nil
 	M.pendingUpdate, M.insertedLink = nil, nil
 	_G.AuctionFrame, _G.Auctionator, _G.TSM_API, _G.TooltipDataProcessor = nil, nil, nil, nil
+	_G.AUCTIONATOR_PRICE_DATABASE = nil
+	if M.UIParent then M.UIParent._children = {} end
 	M.install()
 end
 
@@ -38,6 +40,7 @@ function M.install()
 	_G.time = function(t) if t then return os.time(t) end return M.now end
 	_G.date = function(fmt, t) return os.date(fmt, t or M.now) end
 	_G.GetTime = function() return M.gt end
+	_G.debugprofilestop = function() return os.clock() * 1000 end
 	_G.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 	_G.tinsert = table.insert
 	_G.strsplit = nil
@@ -65,6 +68,7 @@ function M.install()
 	_G.StaticPopupDialogs = {}
 	_G.StaticPopup_Show = function(which) M.popup = which end
 	_G.UISpecialFrames = {}
+	_G.UIParent = M.UIParent
 	_G.ITEM_QUALITY_COLORS = {
 		[0] = { hex = "|cff9d9d9d" }, [1] = { hex = "|cffffffff" }, [2] = { hex = "|cff1eff00" },
 		[3] = { hex = "|cff0070dd" }, [4] = { hex = "|cffa335ee" },
@@ -241,11 +245,42 @@ function Widget.SetWidth(w, x) w._w = x end
 function Widget.SetHeight(w, y) w._h = y end
 function Widget.GetWidth(w) return w._w end
 function Widget.GetHeight(w) return w._h end
-function Widget.SetPoint(w, ...)
-	local n = select("#", ...)
-	assert(n >= 1, "SetPoint needs a point")
+local POINTS = { TOPLEFT = true, TOP = true, TOPRIGHT = true, LEFT = true, CENTER = true, RIGHT = true,
+	BOTTOMLEFT = true, BOTTOM = true, BOTTOMRIGHT = true }
+
+-- Accepts every SetPoint form WoW does: (p), (p, x, y), (p, rel), (p, rel, x, y), (p, rel, rp), (p, rel, rp, x, y)
+function Widget.SetPoint(w, point, a, b, c, d)
+	assert(POINTS[point], "SetPoint: bad point " .. tostring(point))
+	local rel, relPoint, x, y
+	if type(a) == "number" or a == nil then
+		rel, relPoint, x, y = nil, point, a or 0, b or 0
+	elseif type(b) == "string" then
+		assert(POINTS[b], "SetPoint: bad relative point " .. b)
+		rel, relPoint, x, y = a, b, c or 0, d or 0
+	else
+		rel, relPoint, x, y = a, point, b or 0, c or 0
+	end
+	if type(rel) == "string" then rel = _G[rel] end
+	assert(rel == nil or type(rel) == "table", "SetPoint: bad relative frame")
+	local anchors = rawget(w, "_anchors") or {}
+	anchors[point] = { rel = rel, relPoint = relPoint, x = x, y = y }
+	rawset(w, "_anchors", anchors)
 	rawset(w, "_points", (rawget(w, "_points") or 0) + 1)
 end
+function Widget.ClearAllPoints(w) rawset(w, "_anchors", {}) end
+function Widget.GetPoint(w)
+	for point, a in pairs(rawget(w, "_anchors") or {}) do
+		return point, a.rel, a.relPoint, a.x, a.y
+	end
+end
+function Widget.SetAllPoints(w, rel)
+	w:SetPoint("TOPLEFT", rel or w._parent, "TOPLEFT", 0, 0)
+	w:SetPoint("BOTTOMRIGHT", rel or w._parent, "BOTTOMRIGHT", 0, 0)
+end
+function Widget.SetColorTexture(w, r, g, b, a) rawset(w, "_color", { r, g, b, a or 1 }) end
+function Widget.SetJustifyH(w, j) rawset(w, "_justify", j) end
+function Widget.SetWordWrap(w, v) rawset(w, "_wrap", v and true or false) end
+function Widget.SetBackdrop(w, b) rawset(w, "_backdrop", b) end
 function Widget.SetText(w, t)
 	assert(t == nil or type(t) == "string" or type(t) == "number", "SetText given " .. type(t))
 	w._text = t and tostring(t) or ""
@@ -280,7 +315,11 @@ function Widget.SetTexture(w, t)
 	assert(t == nil or type(t) == "string" or type(t) == "number", "SetTexture given " .. type(t))
 	w._texture = t
 end
-function Widget.CreateFontString(w, name) return NewWidget("FontString", name, w) end
+function Widget.CreateFontString(w, name, layer, font)
+	local fs = NewWidget("FontString", name, w)
+	fs._font = font
+	return fs
+end
 function Widget.CreateTexture(w, name) return NewWidget("Texture", name, w) end
 function Widget.LockHighlight(w) w._locked = true end
 function Widget.UnlockHighlight(w) w._locked = false end
@@ -290,10 +329,16 @@ local TEMPLATES = {
 		assert(w._name, "FauxScrollFrameTemplate needs a global name")
 		local bar = NewWidget("Slider", w._name .. "ScrollBar", w)
 		bar._scrollFrame = w
+		-- as in FrameXML: a 16px bar just outside the scroll frame's right edge
+		bar:SetPoint("TOPLEFT", w, "TOPRIGHT", 6, -16)
+		bar:SetPoint("BOTTOMLEFT", w, "BOTTOMRIGHT", 6, 16)
+		bar:SetWidth(16)
 	end,
-	UIPanelButtonTemplate = true, UICheckButtonTemplate = true, InputBoxTemplate = true,
-	UIPanelCloseButton = true, BackdropTemplate = true,
+	UIPanelButtonTemplate = true, UICheckButtonTemplate = function(w) w:SetSize(32, 32) end, InputBoxTemplate = true,
+	UIPanelCloseButton = function(w) w:SetSize(32, 32) end, BackdropTemplate = true,
 }
+
+M.UIParent = setmetatable({ _kind = "Frame", _name = "UIParent", _children = {}, _shown = true, _scripts = {}, _w = 1920, _h = 1080 }, Widget)
 
 _G.CreateFrame = function(kind, name, parent, template)
 	if template then
@@ -302,7 +347,6 @@ _G.CreateFrame = function(kind, name, parent, template)
 		end
 	end
 	local w = NewWidget(kind, name, parent)
-	if kind == "EditBox" then w._shown = true end
 	if template then
 		for t in template:gmatch("[^,%s]+") do
 			if type(TEMPLATES[t]) == "function" then TEMPLATES[t](w) end
@@ -354,7 +398,12 @@ end
 
 function M.OpenAH()
 	M.ahOpen = true
-	_G.AuctionFrame = _G.AuctionFrame or CreateFrame("Frame", "AuctionFrame", nil)
+	if not _G.AuctionFrame then
+		-- the default auction house window: 832x447, docked near the top left
+		local f = CreateFrame("Frame", "AuctionFrame", UIParent)
+		f:SetSize(832, 447)
+		f:SetPoint("TOPLEFT", 0, -104)
+	end
 	M.FireEvent("AUCTION_HOUSE_SHOW")
 end
 
@@ -362,6 +411,107 @@ function M.CloseAH()
 	M.ahOpen = false
 	M.list = {}
 	M.FireEvent("AUCTION_HOUSE_CLOSED")
+end
+
+---------------------------------------------------------------------------
+-- Layout: resolve anchors into screen rectangles (WoW coordinates, y up)
+---------------------------------------------------------------------------
+M.SCREEN_W, M.SCREEN_H = 1920, 1080
+local FONT_SIZE = { GameFontNormalLarge = 16, GameFontNormal = 12, GameFontDisable = 12 }
+function M.FontSize(fs) return FONT_SIZE[fs._font or ""] or 10 end
+
+local function StripCodes(t)
+	return (t or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h(.-)|h", "%1")
+end
+M.StripCodes = StripCodes
+
+-- estimated width of a text in pixels (average glyph width ~0.55 em)
+local function TextWidth(fs)
+	local longest = 0
+	for line in (StripCodes(fs._text) .. "\n"):gmatch("(.-)\n") do longest = math.max(longest, #line) end
+	return longest * M.FontSize(fs) * 0.55
+end
+
+local HX = { TOPLEFT = 0, LEFT = 0, BOTTOMLEFT = 0, TOP = 0.5, CENTER = 0.5, BOTTOM = 0.5, TOPRIGHT = 1, RIGHT = 1, BOTTOMRIGHT = 1 }
+local VY = { TOPLEFT = 1, TOP = 1, TOPRIGHT = 1, LEFT = 0.5, CENTER = 0.5, RIGHT = 0.5, BOTTOMLEFT = 0, BOTTOM = 0, BOTTOMRIGHT = 0 }
+
+function M.Rect(w, depth)
+	depth = (depth or 0) + 1
+	assert(depth < 50, "anchor loop")
+	if w == M.UIParent or w == nil then return { l = 0, r = M.SCREEN_W, b = 0, t = M.SCREEN_H } end
+	local anchors = rawget(w, "_anchors")
+	if not anchors or not next(anchors) then return nil end -- not placed: not drawn by WoW either
+	local xs, ys = {}, {}
+	for point, a in pairs(anchors) do
+		local rel = a.rel or w._parent
+		local rr = M.Rect(rel, depth)
+		if not rr then return nil end
+		local px = rr.l + (rr.r - rr.l) * HX[a.relPoint] + a.x
+		local py = rr.b + (rr.t - rr.b) * VY[a.relPoint] + a.y
+		xs[HX[point]] = px
+		ys[VY[point]] = py
+	end
+	local width, height = w._w, w._h
+	if w._kind == "FontString" then
+		if not width or width == 0 then width = TextWidth(w) end
+		if not height or height == 0 then
+			local lines = 1
+			if w._w and w._w > 0 and w._wrap ~= false then lines = math.max(1, math.ceil(TextWidth(w) / w._w)) end
+			local _, breaks = (w._text or ""):gsub("\n", "")
+			height = (lines + breaks) * (M.FontSize(w) + 2)
+		end
+	end
+	local l, r
+	if xs[0] and xs[1] then l, r = xs[0], xs[1]
+	elseif xs[0] then l, r = xs[0], xs[0] + width
+	elseif xs[1] then l, r = xs[1] - width, xs[1]
+	elseif xs[0.5] then l, r = xs[0.5] - width / 2, xs[0.5] + width / 2 end
+	local b, t
+	if ys[0] and ys[1] then b, t = ys[0], ys[1]
+	elseif ys[1] then b, t = ys[1] - height, ys[1]
+	elseif ys[0] then b, t = ys[0], ys[0] + height
+	elseif ys[0.5] then b, t = ys[0.5] - height / 2, ys[0.5] + height / 2 end
+	if not (l and b) then return nil end
+	return { l = l, r = r, b = b, t = t }
+end
+
+local function JsonString(v)
+	return '"' .. v:gsub('[%c"\\]', function(c) return string.format("\\u%04x", c:byte()) end) .. '"'
+end
+
+-- Every visible, placed widget under root as JSON (top-left origin for HTML).
+function M.ExportLayout(root)
+	local out, ids = {}, {}
+	local function visit(w)
+		if not w:IsVisible() then return end
+		local r = M.Rect(w)
+		if r then
+			ids[w] = #out + 1
+			local e = {
+				'"id":' .. (#out + 1), '"kind":' .. JsonString(w._kind),
+				'"parent":' .. (ids[w._parent] or 0),
+				string.format('"x":%.1f,"y":%.1f,"w":%.1f,"h":%.1f', r.l, M.SCREEN_H - r.t, r.r - r.l, r.t - r.b),
+			}
+			if w._text then e[#e + 1] = '"text":' .. JsonString(w._text) end
+			if w._font then e[#e + 1] = '"font":' .. JsonString(w._font) end
+			if w._kind == "FontString" then
+				e[#e + 1] = '"size":' .. M.FontSize(w)
+				e[#e + 1] = '"fixedWidth":' .. tostring((w._w or 0) > 0)
+				e[#e + 1] = '"wrap":' .. tostring(w._wrap ~= false)
+				e[#e + 1] = '"justify":' .. JsonString(w._justify or "CENTER")
+			end
+			if w._color then e[#e + 1] = string.format('"color":[%g,%g,%g,%g]', unpack(w._color)) end
+			if w._backdrop then e[#e + 1] = '"backdrop":true' end
+			if w._texture then e[#e + 1] = '"texture":true' end
+			if w._checked then e[#e + 1] = '"checked":true' end
+			if w._locked then e[#e + 1] = '"locked":true' end
+			if w._name then e[#e + 1] = '"name":' .. JsonString(w._name) end
+			out[#out + 1] = "{" .. table.concat(e, ",") .. "}"
+		end
+		for _, c in ipairs(w._children) do visit(c) end
+	end
+	visit(root)
+	return "[" .. table.concat(out, ",\n") .. "]"
 end
 
 -- Load the addon from its .toc in a fresh namespace.
@@ -400,6 +550,26 @@ function M.Serialize(v, seen)
 		return "{" .. table.concat(parts, ",") .. "}"
 	end
 	error("cannot save a " .. t .. " in SavedVariables")
+end
+
+-- Size of a value as WoW writes it to SavedVariables (indentation, ["key"] = and -- [n] comments).
+function M.WoWSavedSize(v, depth)
+	depth = depth or 0
+	local t = type(v)
+	if t == "string" then return #string.format("%q", v) end
+	if t ~= "table" then return #tostring(v) end
+	local size = 2 -- "{" and "}"
+	local n = #v
+	for i = 1, n do
+		size = size + depth + 1 + M.WoWSavedSize(v[i], depth + 1) + #(", -- [" .. i .. "]\n")
+	end
+	for k, val in pairs(v) do
+		if not (type(k) == "number" and k >= 1 and k <= n and k % 1 == 0) then
+			local ks = type(k) == "string" and string.format("[%q]", k) or ("[" .. tostring(k) .. "]")
+			size = size + depth + 1 + #ks + 3 + M.WoWSavedSize(val, depth + 1) + 2
+		end
+	end
+	return size + depth + 1
 end
 
 function M.Deserialize(s)

@@ -12,12 +12,11 @@ ns.current = {} -- this session's detail per item key: ladder, own listings, che
 
 local ipairs, pairs = ipairs, pairs
 local PAGE_SIZE = NUM_AUCTION_ITEMS_PER_PAGE or 50
-local CHUNK = 1000          -- rows read per frame during a full scan
-local COMMIT_CHUNK = 400    -- items saved per frame during a large commit
 local IDLE_COMMIT = 2       -- seconds after the last result update before saving
 local MISSING_TOLERANCE = 0.01
 
 local ahOpen = false
+local queryCount = 0    -- QueryAuctionItems calls seen; tells re-fired events from new results
 local capture           -- results of the current search
 local commitTimer
 
@@ -39,7 +38,7 @@ local function ReadRow(i)
 	local key = ns.ItemKeyFromLink(GetAuctionItemLink("list", i)) or tostring(itemId)
 	return {
 		key = key, name = name, quality = quality, count = count, buyout = buyout,
-		unit = buyout / count, owner = owner, mine = owner ~= nil and owner == ns.playerName,
+		unit = buyout / count, owner = owner, mine = owner ~= nil and (owner == ns.playerName or owner == ns.playerFullName),
 	}
 end
 
@@ -65,7 +64,7 @@ local function ScheduleCommit()
 	commitTimer = ns.After(IDLE_COMMIT, function() S.Commit(capture) end)
 end
 
-local function CommitItem(key, listings, full, now, newDeals)
+local function CommitItem(key, listings, full, now, newDeals, focus)
 	local first = listings[1]
 	local snap = ns.Analysis.BuildSnapshot(listings, full, now) -- sorts listings by unit price
 	local ref = ns.History.GetReference(key, now)
@@ -87,18 +86,18 @@ local function CommitItem(key, listings, full, now, newDeals)
 		t = now, ladder = ns.Analysis.BuildLadder(listings, 5), mine = mine,
 		cheapQty = cheapQty, cheapCost = cheapCost, ref = ref, full = full,
 	}
-	ns.History.AddSnapshot(key, first.name, first.quality, snap)
+	ns.History.AddSnapshot(key, first.name, first.quality, snap, focus)
 end
 
--- Save the merged pages of a capture. Large captures are saved over several frames.
-function S.Commit(cap)
-	if not cap or cap.committing or not cap.dirty then return end
-	ns.Cancel(commitTimer)
-	cap.dirty = false
+-- Save the merged pages of a capture. Small searches are saved at once; big
+-- ones (full scans) run as a background job within a per-frame time budget.
+local SYNC_ROWS = 1000
+
+local function SaveCapture(cap, yield)
 	local seen, missing, byKey, keys = 0, 0, {}, {}
 	for _, page in pairs(cap.pages) do
 		seen, missing = seen + page.seen, missing + page.missing
-		for _, row in ipairs(page.rows) do
+		for i, row in ipairs(page.rows) do
 			local list = byKey[row.key]
 			if not list then
 				list = {}
@@ -106,6 +105,7 @@ function S.Commit(cap)
 				keys[#keys + 1] = row.key
 			end
 			list[#list + 1] = row
+			if i % 500 == 0 then ns.Checkpoint(yield) end
 		end
 	end
 	if #keys == 0 then return end
@@ -113,27 +113,24 @@ function S.Commit(cap)
 	local full = not cap.aborted and seen + missing >= total and missing <= total * MISSING_TOLERANCE
 	local now = cap.updatedAt or time() -- when the results arrived, not when we save them
 	local newDeals = {}
-	local function finish()
-		cap.committing = nil
-		ns.Analysis.Alert(newDeals)
-		ns.Fire("MI_DATA_UPDATED")
-		ns.Fire("MI_CAPTURE_SAVED", #keys, full, cap.getAll)
+	for i, key in ipairs(keys) do
+		CommitItem(key, byKey[key], full, now, newDeals, not cap.getAll)
+		if i % 20 == 0 then ns.Checkpoint(yield) end
 	end
-	if #keys <= COMMIT_CHUNK then
-		for _, key in ipairs(keys) do CommitItem(key, byKey[key], full, now, newDeals) end
-		return finish()
-	end
+	ns.Analysis.Alert(newDeals)
+	ns.Fire("MI_DATA_UPDATED")
+	ns.Fire("MI_CAPTURE_SAVED", #keys, full, cap.getAll)
+end
+
+function S.Commit(cap)
+	if not cap or cap.committing or not cap.dirty then return end
+	ns.Cancel(commitTimer)
+	cap.dirty = false
+	local rows = 0
+	for _, page in pairs(cap.pages) do rows = rows + #page.rows end
+	if rows <= SYNC_ROWS then return SaveCapture(cap) end
 	cap.committing = true
-	local i = 1
-	ns.RunTask(function()
-		local stop = math.min(i + COMMIT_CHUNK - 1, #keys)
-		for j = i, stop do CommitItem(keys[j], byKey[keys[j]], full, now, newDeals) end
-		i = stop + 1
-		if i > #keys then
-			finish()
-			return true
-		end
-	end)
+	ns.RunJob(function(yield) SaveCapture(cap, yield) end, function() cap.committing = nil end)
 end
 
 ---------------------------------------------------------------------------
@@ -169,16 +166,19 @@ local function ReadFullScan(cap, batch)
 			missingIdx = still
 			retries = retries + 1
 		elseif i <= batch then
-			local stop = math.min(i + CHUNK - 1, batch)
-			for idx = i, stop do
-				local row = ReadRow(idx)
-				if row == nil then missingIdx[#missingIdx + 1] = idx
-				else
-					seen = seen + 1
-					if row then rows[#rows + 1] = row end
+			ns.StartFrameBudget()
+			repeat
+				local stop = math.min(i + 99, batch)
+				for idx = i, stop do
+					local row = ReadRow(idx)
+					if row == nil then missingIdx[#missingIdx + 1] = idx
+					else
+						seen = seen + 1
+						if row then rows[#rows + 1] = row end
+					end
 				end
-			end
-			i = stop + 1
+				i = stop + 1
+			until i > batch or ns.OverBudget()
 			status.fullScanProgress = (i - 1) / batch
 			ns.Fire("MI_SCAN_PROGRESS")
 			return false
@@ -190,6 +190,7 @@ local function ReadFullScan(cap, batch)
 		cap.pages[0] = { rows = rows, seen = seen, missing = #missingIdx }
 		cap.dirty, cap.updatedAt = true, cap.updatedAt or time()
 		cap.processing = nil
+		S.lastFullRead = { query = queryCount, batch = batch, at = GetTime() }
 		status.fullScan = nil
 		S.Commit(cap)
 		if capture == cap then capture = nil end
@@ -207,6 +208,7 @@ end
 -- Events and the QueryAuctionItems hook
 ---------------------------------------------------------------------------
 local function OnQuery(name, minLevel, maxLevel, page, usable, rarity, getAll, exact)
+	queryCount = queryCount + 1
 	local qkey
 	if getAll then
 		qkey = "*getall*"
@@ -240,6 +242,14 @@ ns.On("AUCTION_ITEM_LIST_UPDATE", function()
 	batch, total = batch or 0, total or 0
 	if not capture then capture = NewCapture("?", false) end
 	if capture.getAll or batch > PAGE_SIZE then
+		-- The client re-fires this event while item info loads. Read a full scan
+		-- only once: skip it if no new query was sent since we last read one.
+		local last = S.lastFullRead
+		-- Without the hook (queryCount stays 0) fall back to a 5 minute window.
+		if last and last.query == queryCount and last.batch == batch and (queryCount > 0 or GetTime() - last.at < 300) then
+			if capture.qkey == "?" then capture = nil end
+			return
+		end
 		capture.getAll = true
 		if batch > 0 then ReadFullScan(capture, batch) end
 		return
@@ -254,6 +264,7 @@ end)
 ns.On("AUCTION_HOUSE_SHOW", function()
 	ahOpen = true
 	ns.playerName = ns.playerName or UnitName("player")
+	ns.playerFullName = ns.playerName .. "-" .. (GetRealmName() or ""):gsub("%s+", "")
 	ns.SetAuctionHouse(ns.GetAuctionHouseKey())
 	ns.Fire("MI_AH_OPENED")
 end)

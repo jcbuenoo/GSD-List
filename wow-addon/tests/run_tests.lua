@@ -26,6 +26,11 @@ end
 local function near(a, b, tol, msg)
 	if not a or math.abs(a - b) > (tol or 1) then error((msg or "not close") .. ": expected ~" .. tostring(b) .. ", got " .. tostring(a), 2) end
 end
+-- number of entries in an encoded history string
+local function entries(str)
+	if not str or str == "" then return 0 end
+	return select(2, str:gsub(";", "")) + 1
+end
 local function chatHas(pattern)
 	for _, line in ipairs(M.chat) do if line:find(pattern) then return line end end
 	return nil
@@ -134,7 +139,7 @@ test("passive capture merges pages into one complete snapshot", function()
 	eq(s.min, 10000, "min"); eq(s.full, true, "full")
 	-- cheapest 25% of 1400 units = 350 units: 17 auctions of 20 + 10 units of the 18th = 3,789,000c / 350
 	near(s.mkt, 10826, 1, "market value")
-	eq(#ns.realm.items["23425"].s, 1, "one snapshot")
+	eq(entries(ns.realm.items["23425"].s), 1, "one snapshot")
 end)
 
 test("an old search is not re-saved with a new timestamp when the next search starts", function()
@@ -146,7 +151,7 @@ test("an old search is not re-saved with a new timestamp when the next search st
 	local seenAt = ns.History.GetLatest("23445").t
 	M.now = M.now + 1800
 	search("Arcane Dust"); M.Tick(3)
-	eq(#ns.realm.items["23445"].s, 1, "stale results saved again")
+	eq(entries(ns.realm.items["23445"].s), 1, "stale results saved again")
 	eq(ns.History.GetLatest("23445").t, seenAt, "timestamp moved")
 end)
 
@@ -201,7 +206,7 @@ test("bid-only and grey items are skipped; random suffix items kept separate", f
 	eq(ns.History.GetLatest("2000"), nil, "bid-only stored")
 end)
 
-test("repeat searches within 10 minutes replace the snapshot; partial never shrinks a full one", function()
+test("repeat searches within 30 minutes replace the snapshot; partial never shrinks a full one", function()
 	local ns = load(nil)
 	M.OpenAH()
 	addAuctions("Primal Fire", 21884, 60, 150000)
@@ -210,11 +215,11 @@ test("repeat searches within 10 minutes replace the snapshot; partial never shri
 	M.now = M.now + 120
 	search("Primal Fire", 0); M.Tick(3) -- only page 1 this time
 	local item = ns.realm.items["21884"]
-	eq(#item.s, 1, "replaced, not appended")
+	eq(entries(item.s), 1, "replaced, not appended")
 	eq(ns.History.GetLatest("21884").qty, 60, "partial must not shrink the full quantity")
 	M.now = M.now + 3600
 	search("Primal Fire", 0); M.Tick(3)
-	eq(#item.s, 2, "new snapshot after the replace window")
+	eq(entries(item.s), 2, "new snapshot after the replace window")
 end)
 
 ---------------------------------------------------------------------------
@@ -322,11 +327,11 @@ test("compaction folds old snapshots into daily summaries without changing the s
 	end
 	M.now = 1767268800
 	local item = ns.realm.items["22794"]
-	eq(#item.s, 30)
+	eq(entries(item.s), 30)
 	local before = ns.History.GetDaily(item, M.now)
 	ns.History.Compact(M.now)
-	eq(#item.s, 9, "raw kept for 3 days") -- days -1,-2,-3 (cutoff day -3 kept)
-	eq(#item.d, 7)
+	eq(entries(item.s), 6, "raw kept for 2 days") -- days -1 and -2
+	eq(entries(item.d), 8)
 	local after = ns.History.GetDaily(item, M.now)
 	eq(#after, #before)
 	for i = 1, #before do
@@ -337,7 +342,7 @@ test("compaction folds old snapshots into daily summaries without changing the s
 	end
 	-- compacting twice changes nothing
 	ns.History.Compact(M.now)
-	eq(#item.d, 7)
+	eq(entries(item.d), 8)
 	-- 100 days later everything is gone
 	ns.History.Compact(M.now + 100 * DAY)
 	eq(ns.realm.items["22794"], nil, "expired item not deleted")
@@ -421,6 +426,34 @@ test("full scan (getAll): 20k auctions read over several frames, uncached rows r
 	print(string.format("       (20k-auction scan processed in %.2fs CPU)", cpu))
 end)
 
+test("full scan is read once even when the client re-fires the update event", function()
+	local ns = load(nil)
+	M.OpenAH()
+	for i = 1, 500 do addAuctions("Item " .. i, 30000 + i, 2, 1000 + i) end
+	QueryAuctionItems("", nil, nil, 0, false, nil, true, false)
+	M.Tick(2)
+	for _ = 1, 3 do M.FireEvent("AUCTION_ITEM_LIST_UPDATE"); M.Tick(1) end
+	local reads = 0
+	for _, line in ipairs(M.chat) do if line:find("full scan read") then reads = reads + 1 end end
+	eq(reads, 1, "full scan re-read")
+	-- a new full scan later is read again
+	M.Tick(900)
+	QueryAuctionItems("", nil, nil, 0, false, nil, true, false)
+	M.Tick(2)
+	reads = 0
+	for _, line in ipairs(M.chat) do if line:find("full scan read") then reads = reads + 1 end end
+	eq(reads, 2, "second full scan ignored")
+end)
+
+test("own auctions are recognised with a realm suffix on the name", function()
+	local ns = load(nil)
+	M.OpenAH()
+	addAuctions("Primal Air", 22451, 1, 100000, { owner = "Tester-Dreamscythe" })
+	addAuctions("Primal Air", 22451, 2, 120000, { owner = "Someone" })
+	search("Primal Air"); M.Tick(3)
+	eq(ns.current["22451"].mine, 1)
+end)
+
 test("full scan interrupted by closing the AH saves what was read as partial", function()
 	local ns = load(nil)
 	M.OpenAH()
@@ -483,6 +516,87 @@ test("neutral auction house gets its own price data", function()
 end)
 
 ---------------------------------------------------------------------------
+-- Build a fake Auctionator database the way Auctionator stores it.
+local function fakeAuctionator(realmKey, items, daysBack)
+	local day0 = os.time({ year = 2020, month = 1, day = 1, hour = 0 })
+	local today = math.floor((M.now - day0) / DAY)
+	local realm = {}
+	for id, price in pairs(items) do
+		local e = { m = price, l = {}, h = {}, a = {} }
+		for d = today - daysBack, today - 1 do
+			e.l[tostring(d)] = price
+			e.h[tostring(d)] = price * 1.2
+			e.a[tostring(d)] = 40
+		end
+		realm[tostring(id)] = e
+	end
+	realm["g:28432:115"] = { m = 5, l = { ["2000"] = 5 }, h = {} }
+	_G.AUCTIONATOR_PRICE_DATABASE = { __dbversion = 6, [realmKey] = realm, ["Other Realm"] = { ["1"] = { m = 1, l = {}, h = {} } } }
+end
+
+test("Auctionator history import seeds normal prices immediately", function()
+	fakeAuctionator("Dreamscythe", { [23571] = 800000, [22451] = 100000 }, 10)
+	local ns = load(nil) -- empty history -> imports automatically on login
+	M.Tick(1)
+	assert(chatHas("imported 20 days of price history for 2 items"), "import message: " .. tostring(M.chat[#M.chat]))
+	local ref, src = ns.History.GetReference("23571")
+	eq(src, "history"); eq(ref, 880000, "midpoint of Auctionator's low and high")
+	eq(ns.History.GetItem("g:28432:115"), nil, "gear keys must be skipped")
+	eq(ns.History.GetNormalSupply("23571"), 40)
+	-- importing again adds nothing; our own days are never overwritten
+	M.chat = {}
+	SlashCmdList.MARKETINTEL("import")
+	M.Tick(1)
+	assert(chatHas("imported 0 days"), "re-import should add nothing")
+	-- and we never auto-import twice
+	eq(type(ns.realm.importedAuctionator), "number")
+end)
+
+test("Auctionator import picks the right faction and rejects unknown formats", function()
+	fakeAuctionator("Dreamscythe Horde", { [1] = 100 }, 5)
+	AUCTIONATOR_PRICE_DATABASE["Dreamscythe Alliance"] = AUCTIONATOR_PRICE_DATABASE["Dreamscythe Horde"]
+	AUCTIONATOR_PRICE_DATABASE["Dreamscythe Horde"] = { ["2"] = { m = 1, l = { ["100"] = 1 }, h = {} } }
+	local ns = load(nil)
+	M.Tick(1)
+	local _, name = ns.Integrations.FindAuctionatorRealm(AUCTIONATOR_PRICE_DATABASE)
+	eq(name, "Dreamscythe Alliance")
+	assert(ns.History.GetItem("1"), "alliance data not imported")
+	-- a database with a different shape is reported, not imported
+	M.reset()
+	_G.AUCTIONATOR_PRICE_DATABASE = { Dreamscythe = { ["5"] = 12345, ["6"] = "x", ["7"] = { price = 3 } } }
+	ns = load(nil)
+	M.Tick(1)
+	SlashCmdList.MARKETINTEL("import")
+	M.Tick(1)
+	assert(chatHas("format was not recognized"), "unknown format not reported")
+	eq(ns.History.CountData(), 0)
+	-- no Auctionator at all
+	M.reset()
+	ns = load(nil)
+	SlashCmdList.MARKETINTEL("import")
+	assert(chatHas("was not found"), "missing Auctionator not reported")
+end)
+
+test("items only seen in full scans keep less history than searched items", function()
+	local ns = load(nil)
+	M.OpenAH()
+	addAuctions("Searched Thing", 501, 3, 1000)
+	addAuctions("Scanned Thing", 502, 3, 1000)
+	local base = M.now
+	for d = 40, 1, -1 do
+		M.now = base - d * DAY
+		search("Searched Thing"); M.Tick(3)
+		QueryAuctionItems("", nil, nil, 0, false, nil, true, false); M.Tick(3)
+		M.Tick(900)
+	end
+	M.now = base
+	ns.History.Compact(M.now)
+	local searched = ns.History.GetDaily(ns.History.GetItem("501"), M.now)
+	local scanned = ns.History.GetDaily(ns.History.GetItem("502"), M.now)
+	eq(#searched, 40, "searched item keeps 60 days")
+	eq(#scanned, 21, "scan-only item keeps 21 days")
+end)
+
 test("saved variables round-trip and stay compact", function()
 	local ns = load(nil)
 	M.OpenAH()
@@ -774,6 +888,29 @@ test("UI: depth and history tabs stay fast with thousands of items", function()
 	end
 end)
 
+test("UI: window opens beside the auction house and remembers where it was dragged", function()
+	local ns = load(nil)
+	M.OpenAH()
+	ns.UI.ahButton:Click()
+	local f = ns.UI.GetFrame()
+	local point, rel, relPoint, x = f:GetPoint()
+	eq(point, "TOPLEFT"); eq(rel, AuctionFrame); eq(relPoint, "TOPRIGHT"); eq(x, 120)
+	local r, ah = M.Rect(f), M.Rect(AuctionFrame)
+	assert(r.l >= ah.r, "window covers the auction house")
+	-- drag it somewhere: position saved and restored next time
+	f:ClearAllPoints(); f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -60)
+	f:GetScript("OnDragStop")(f)
+	ns.UI.Toggle(); ns.UI.Toggle()
+	point, rel, relPoint, x = f:GetPoint()
+	eq(point, "TOPLEFT"); eq(x, 50)
+	eq(ns.settings.windowPos[4], -60)
+	-- settings boxes explain themselves on hover
+	ns.UI.Show("settings")
+	local eb = ns.UI.GetPage("settings").controls[5]
+	eb:GetScript("OnEnter")(eb)
+	assert(GameTooltip.lines[2] and #GameTooltip.lines[2] > 20, "no setting tooltip")
+end)
+
 test("UI: empty states render without data", function()
 	local ns = load(nil)
 	for _, tab in ipairs({ "deals", "depth", "history", "watch", "settings" }) do ns.UI.Show(tab) end
@@ -788,4 +925,8 @@ local used = {}
 for m in pairs(M.usedMethods) do used[#used + 1] = m end
 table.sort(used)
 print("widget methods used: " .. table.concat(used, ", "))
+local missing = {}
+for m in pairs(M.missingMethods) do missing[#missing + 1] = m end
+table.sort(missing)
+print("looked up but not on that widget type (nil, as in WoW): " .. (#missing > 0 and table.concat(missing, ", ") or "none"))
 os.exit(#failed == 0 and 0 or 1)

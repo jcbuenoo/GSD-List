@@ -1,87 +1,246 @@
 -- Market Intel: price history storage, compaction and statistics.
 --
 -- Per auction house (realm + faction) we keep, for each item key:
---   n = name, q = quality, seen = last time seen
---   s = recent snapshots, one string each: "time:min:market:qty:auctions:sellers:wall:full"
---   d = daily summaries for older days:    "day:min:marketSum:n:qtySum:aucSum:selSum:nFull"
--- Strings keep the SavedVariables file small; they are decoded on demand.
+--   n = name, q = quality, seen = last time seen, f = 1 if you searched it directly (kept longer)
+--   s = recent snapshots, one string:  "t,min,mkt,qty,auc,sel,wall,full;t,min,..."
+--   d = daily summaries, one string:   "day,min,mkt,qty,auc,sel,n;day,..."
+-- Numbers are hexadecimal and each item holds just two strings, which keeps the
+-- SavedVariables file small. Everything is decoded on demand and cached.
 local _, ns = ...
 
 local H = {}
 ns.History = H
 
-local format, tonumber, pairs, ipairs, max, min = string.format, tonumber, pairs, ipairs, math.max, math.min
+local floor, tonumber, pairs, ipairs, max, min, concat, format = math.floor, tonumber, pairs, ipairs, math.max, math.min, table.concat, string.format
 local DAY = 86400
--- decoded snapshot lists, keyed by item table; weak so it never reaches SavedVariables
+
+-- Decoded data, keyed by item table. Weak, so it never reaches SavedVariables.
 local rawCache = setmetatable({}, { __mode = "k" })
+local dayCache = setmetatable({}, { __mode = "k" })
+local seriesCache = setmetatable({}, { __mode = "k" })
 
 ---------------------------------------------------------------------------
 -- Encoding
 ---------------------------------------------------------------------------
-function H.EncodeSnap(s)
-	return format("%d:%d:%d:%d:%d:%d:%d:%d", s.t, s.min, s.mkt, s.qty, s.auc, s.sel, s.wall or 0, s.full and 1 or 0)
+-- Optional numbers are written as "" when missing.
+local function Hex(n)
+	if not n then return "" end
+	return format("%x", max(0, floor(n + 0.5)))
 end
 
-function H.DecodeSnap(str)
-	local t, mn, mkt, qty, auc, sel, wall, full = str:match("^(%d+):(%d+):(%d+):(%d+):(%d+):(%d+):(%d+):(%d)$")
-	if not t then return nil end
-	return {
-		t = tonumber(t), min = tonumber(mn), mkt = tonumber(mkt), qty = tonumber(qty),
-		auc = tonumber(auc), sel = tonumber(sel), wall = tonumber(wall), full = full == "1",
-	}
+local function Num(s)
+	if s == "" then return nil end
+	return tonumber(s, 16)
 end
 
-local function EncodeDay(d)
-	return format("%d:%d:%d:%d:%d:%d:%d:%d", d.day, d.min, d.mktSum, d.n, d.qtySum, d.aucSum, d.selSum, d.nFull)
+local function EncodeSnap(s)
+	return format("%x,%x,%x,%x,%x,%x,%x,%d", s.t, max(0, floor(s.min + 0.5)), max(0, floor(s.mkt + 0.5)),
+		s.qty, s.auc, s.sel, s.wall or 0, s.full and 1 or 0)
 end
 
-local function DecodeDay(str)
-	local day, mn, mktSum, n, qtySum, aucSum, selSum, nFull = str:match("^(%d+):(%d+):(%d+):(%d+):(%d+):(%d+):(%d+):(%d+)$")
-	if not day then return nil end
-	return {
-		day = tonumber(day), min = tonumber(mn), mktSum = tonumber(mktSum), n = tonumber(n),
-		qtySum = tonumber(qtySum), aucSum = tonumber(aucSum), selSum = tonumber(selSum), nFull = tonumber(nFull),
-	}
+local function EncodeRaw(list)
+	local parts = {}
+	for i, s in ipairs(list) do parts[i] = EncodeSnap(s) end
+	return concat(parts, ";")
 end
 
--- Fold a snapshot into a day accumulator. Supply numbers only count complete scans.
-local function AddToDay(acc, snap)
-	acc.min = acc.min and min(acc.min, snap.min) or snap.min
-	acc.mktSum = acc.mktSum + snap.mkt
-	acc.n = acc.n + 1
-	if snap.full then
-		acc.qtySum = acc.qtySum + snap.qty
-		acc.aucSum = acc.aucSum + snap.auc
-		acc.selSum = acc.selSum + snap.sel
-		acc.nFull = acc.nFull + 1
+local function DecodeRaw(str)
+	local out = {}
+	for t, mn, mkt, qty, auc, sel, wall, full in (str or ""):gmatch("(%w+),(%w+),(%w+),(%w+),(%w+),(%w+),(%w+),([01])") do
+		out[#out + 1] = {
+			t = Num(t), min = Num(mn), mkt = Num(mkt), qty = Num(qty), auc = Num(auc),
+			sel = Num(sel), wall = Num(wall), full = full == "1",
+		}
 	end
+	return out
 end
 
-local function NewDay(day)
-	return { day = day, mktSum = 0, n = 0, qtySum = 0, aucSum = 0, selSum = 0, nFull = 0 }
+-- Daily entries: supply fields (qty, auc, sel) are nil when no complete scan was seen that day.
+local function EncodeDays(list)
+	local parts = {}
+	for i, d in ipairs(list) do
+		parts[i] = concat({ Hex(d.day), Hex(d.min), Hex(d.mkt), Hex(d.qty), Hex(d.auc), Hex(d.sel), Hex(d.n) }, ",")
+	end
+	return concat(parts, ";")
+end
+
+local function DecodeDays(str)
+	local out = {}
+	for day, mn, mkt, qty, auc, sel, n in (str or ""):gmatch("(%w+),(%w+),(%w+),(%w*),(%w*),(%w*),(%w+)") do
+		out[#out + 1] = { day = Num(day), min = Num(mn), mkt = Num(mkt), qty = Num(qty), auc = Num(auc), sel = Num(sel), n = Num(n) }
+	end
+	return out
+end
+
+-- Average a list of snapshots into one daily entry.
+local function SummarizeDay(day, snaps)
+	local d = { day = day, n = #snaps }
+	local mktSum, qty, auc, sel, nFull = 0, 0, 0, 0, 0
+	for _, s in ipairs(snaps) do
+		d.min = d.min and min(d.min, s.min) or s.min
+		mktSum = mktSum + s.mkt
+		if s.full then
+			qty, auc, sel, nFull = qty + s.qty, auc + s.auc, sel + s.sel, nFull + 1
+		end
+	end
+	d.mkt = mktSum / #snaps
+	if nFull > 0 then d.qty, d.auc, d.sel = qty / nFull, auc / nFull, sel / nFull end
+	return d
+end
+
+-- Merge two summaries of the same day, weighted by how many snapshots each holds.
+local function MergeDay(a, b)
+	local n = a.n + b.n
+	local function avg(x, y)
+		if x and y then return (x * a.n + y * b.n) / n end
+		return x or y
+	end
+	return { day = a.day, n = n, min = min(a.min, b.min), mkt = avg(a.mkt, b.mkt), qty = avg(a.qty, b.qty), auc = avg(a.auc, b.auc), sel = avg(a.sel, b.sel) }
+end
+
+local dayTimes = {}
+local function DayTime(day)
+	local t = dayTimes[day]
+	if not t then
+		t = ns.DayToTime(day)
+		dayTimes[day] = t
+	end
+	return t
 end
 
 ---------------------------------------------------------------------------
--- Writing
+-- Reading
 ---------------------------------------------------------------------------
 function H.GetItem(key)
 	return ns.realm and ns.realm.items[key]
 end
 
-function H.AddSnapshot(key, name, quality, snap)
+-- Snapshots, oldest first. The returned list is shared: do not modify it.
+function H.GetRaw(item)
+	if not item then return {} end
+	local raw = rawCache[item]
+	if not raw then
+		raw = DecodeRaw(item.s)
+		table.sort(raw, function(a, b) return a.t < b.t end)
+		rawCache[item] = raw
+	end
+	return raw
+end
+
+local function GetDays(item)
+	local days = dayCache[item]
+	if not days then
+		days = DecodeDays(item.d)
+		dayCache[item] = days
+	end
+	return days
+end
+
+function H.GetLatest(key)
+	local raw = H.GetRaw(H.GetItem(key))
+	return raw[#raw]
+end
+
+local function Invalidate(item)
+	rawCache[item], dayCache[item], seriesCache[item] = nil, nil, nil
+end
+
+-- Daily series, oldest first: { day, t, min, mkt, qty, auc, sel }.
+-- sinceDays limits how far back to go (nil = everything). The result is cached
+-- and shared: do not modify it.
+function H.GetDaily(item, now, sinceDays)
+	if not item then return {} end
+	now = now or time()
+	local today = ns.DayKey(now)
+	local cacheKey = (sinceDays or "all") .. ":" .. today
+	local cache = seriesCache[item]
+	if cache and cache[cacheKey] then return cache[cacheKey] end
+
+	local cutoff = sinceDays and ns.DayKey(now - sinceDays * DAY) or 0
+	local byDay, order = {}, {}
+	for _, d in ipairs(GetDays(item)) do
+		if d.day >= cutoff then
+			byDay[d.day] = d
+			order[#order + 1] = d.day
+		end
+	end
+	local rawByDay = {}
+	for _, s in ipairs(H.GetRaw(item)) do
+		local day = ns.DayKey(s.t)
+		if day >= cutoff then
+			if not rawByDay[day] then
+				rawByDay[day] = {}
+				if not byDay[day] then order[#order + 1] = day end
+			end
+			table.insert(rawByDay[day], s)
+		end
+	end
+	table.sort(order)
+	local out = {}
+	for _, day in ipairs(order) do
+		local d = byDay[day]
+		if rawByDay[day] then
+			local fresh = SummarizeDay(day, rawByDay[day])
+			d = d and MergeDay(d, fresh) or fresh
+		end
+		out[#out + 1] = { day = day, t = DayTime(day), min = d.min, mkt = d.mkt, qty = d.qty, auc = d.auc, sel = d.sel }
+	end
+	cache = cache or {}
+	cache[cacheKey] = out
+	seriesCache[item] = cache
+	return out
+end
+
+---------------------------------------------------------------------------
+-- Name index (lowercase name -> most recently seen key)
+---------------------------------------------------------------------------
+local nameIndex, nameIndexOwner
+
+local function NameIndex()
+	local items = ns.realm and ns.realm.items
+	if nameIndexOwner ~= items then
+		nameIndex, nameIndexOwner = {}, items
+		for key, item in pairs(items or {}) do
+			if item.n then
+				local lower = item.n:lower()
+				local cur = nameIndex[lower]
+				if not cur or (items[cur].seen or 0) < (item.seen or 0) then nameIndex[lower] = key end
+			end
+		end
+	end
+	return nameIndex
+end
+
+function H.FindKeyByName(name)
+	if not name then return nil end
+	return NameIndex()[name:lower()]
+end
+
+function H.ResetIndex()
+	nameIndexOwner = nil
+end
+
+---------------------------------------------------------------------------
+-- Writing
+---------------------------------------------------------------------------
+-- focus: the item was searched directly (not just seen in a full scan), so keep its history longer.
+function H.AddSnapshot(key, name, quality, snap, focus)
 	local items = ns.realm.items
 	local item = items[key]
 	if not item then
-		item = { s = {}, d = {} }
+		item = { s = "", d = "" }
 		items[key] = item
 	end
-	item.n = name or item.n
+	if name and item.n ~= name then
+		item.n = name
+		if nameIndexOwner == items then nameIndex[name:lower()] = key end
+	end
 	item.q = quality or item.q
 	item.seen = max(item.seen or 0, snap.t)
-	rawCache[item] = nil
+	if focus then item.f = 1 end
 
-	local list = item.s
-	local last = list[#list] and H.DecodeSnap(list[#list])
+	local raw = H.GetRaw(item)
+	local last = raw[#raw]
 	if last and snap.t >= last.t and snap.t - last.t < ns.settings.replaceWindow
 		and ns.DayKey(last.t) == ns.DayKey(snap.t) then
 		-- Same scan session (more pages, or a repeat search): replace instead of piling up.
@@ -90,124 +249,147 @@ function H.AddSnapshot(key, name, quality, snap)
 			snap.qty, snap.auc, snap.sel, snap.wall, snap.full = last.qty, last.auc, last.sel, last.wall, true
 			snap.min = min(snap.min, last.min)
 		end
-		list[#list] = H.EncodeSnap(snap)
+		raw[#raw] = snap
+		item.s = (item.s:match("^(.*);[^;]*$") or "") -- drop the last entry...
+		item.s = item.s == "" and EncodeSnap(snap) or (item.s .. ";" .. EncodeSnap(snap)) -- ...and write the new one
+	elseif last and snap.t < last.t then
+		raw[#raw + 1] = snap
+		table.sort(raw, function(a, b) return a.t < b.t end)
+		item.s = EncodeRaw(raw)
 	else
-		list[#list + 1] = H.EncodeSnap(snap)
+		raw[#raw + 1] = snap
+		item.s = item.s == "" and EncodeSnap(snap) or (item.s .. ";" .. EncodeSnap(snap))
 	end
+	seriesCache[item] = nil
 end
 
--- Move old snapshots into daily summaries and drop data older than keepDays.
-function H.Compact(now)
+-- Add whole days of history from another source (the Auctionator import).
+-- Days we already have are left alone; ours are more detailed. Returns days added.
+function H.ImportDays(key, newDays, focus)
+	local items = ns.realm.items
+	local item = items[key]
+	if not item then
+		item = { s = "", d = "" }
+		items[key] = item
+	end
+	local have = {}
+	for _, d in ipairs(GetDays(item)) do have[d.day] = true end
+	for _, s in ipairs(H.GetRaw(item)) do have[ns.DayKey(s.t)] = true end
+	local days, added = GetDays(item), 0
+	for _, d in ipairs(newDays) do
+		if not have[d.day] then
+			days[#days + 1] = d
+			have[d.day] = true
+			added = added + 1
+			item.seen = max(item.seen or 0, DayTime(d.day))
+		end
+	end
+	if added > 0 then
+		table.sort(days, function(a, b) return a.day < b.day end)
+		item.d = EncodeDays(days)
+		seriesCache[item] = nil
+		if focus then item.f = 1 end
+	end
+	if item.s == "" and item.d == "" then items[key] = nil end
+	return added
+end
+
+-- Compact one item: fold old snapshots into daily summaries and drop expired days.
+-- Returns false if the item has no data left.
+local function CompactItem(item, rawCutoff, keepCutoff, scanCutoff)
+	local raw = H.GetRaw(item)
+	local days = GetDays(item)
+	local cutoff = item.f and keepCutoff or scanCutoff
+	local changed = false
+
+	if raw[1] and ns.DayKey(raw[1].t) < rawCutoff then
+		local keep, fold, foldOrder = {}, {}, {}
+		for _, s in ipairs(raw) do
+			local day = ns.DayKey(s.t)
+			if day < rawCutoff then
+				if not fold[day] then
+					fold[day] = {}
+					foldOrder[#foldOrder + 1] = day
+				end
+				table.insert(fold[day], s)
+			else
+				keep[#keep + 1] = s
+			end
+		end
+		local byDay = {}
+		for _, d in ipairs(days) do byDay[d.day] = d end
+		for _, day in ipairs(foldOrder) do
+			local summary = SummarizeDay(day, fold[day])
+			if byDay[day] then
+				for i, d in ipairs(days) do
+					if d.day == day then days[i] = MergeDay(d, summary) end
+				end
+			else
+				days[#days + 1] = summary
+			end
+		end
+		table.sort(days, function(a, b) return a.day < b.day end)
+		item.s = EncodeRaw(keep)
+		changed = true
+	end
+
+	if days[1] and days[1].day < cutoff then
+		local keep = {}
+		for _, d in ipairs(days) do
+			if d.day >= cutoff then keep[#keep + 1] = d end
+		end
+		days = keep
+		changed = true
+	end
+	if changed then
+		item.d = EncodeDays(days)
+		Invalidate(item)
+	end
+	return item.s ~= "" or item.d ~= ""
+end
+
+-- Fold old snapshots into daily summaries and drop data past its retention.
+-- Searched/watched items keep keepDays of history; items only ever seen in full
+-- scans keep scanKeepDays. With async = true the work is spread over frames.
+function H.Compact(now, async)
 	if not ns.realm then return end
-	local rawCutoff = ns.DayKey(now - ns.settings.rawDays * DAY)
-	local keepCutoff = ns.DayKey(now - ns.settings.keepDays * DAY)
-	for key, item in pairs(ns.realm.items) do
-		rawCache[item] = nil
-		local keep, folded = {}, {}
-		for _, str in ipairs(item.s or {}) do
-			local snap = H.DecodeSnap(str)
-			if snap then
-				local day = ns.DayKey(snap.t)
-				if day < rawCutoff then
-					folded[day] = folded[day] or NewDay(day)
-					AddToDay(folded[day], snap)
-				else
-					keep[#keep + 1] = str
-				end
+	local s = ns.settings
+	local rawCutoff = ns.DayKey(now - s.rawDays * DAY)
+	local keepCutoff = ns.DayKey(now - s.keepDays * DAY)
+	local scanCutoff = ns.DayKey(now - max(s.scanKeepDays, s.minHistoryDays + 1) * DAY)
+	local items = ns.realm.items
+	-- watched items always count as searched
+	for _, w in pairs(ns.db.watch) do
+		local key = H.FindKeyByName(w.name)
+		if key then items[key].f = 1 end
+	end
+	local keys = {}
+	for key in pairs(items) do keys[#keys + 1] = key end
+	local i = 1
+	local function step(limit)
+		local stop = min(#keys, i + limit - 1)
+		for j = i, stop do
+			local item = items[keys[j]]
+			if item and not CompactItem(item, rawCutoff, keepCutoff, scanCutoff) then
+				items[keys[j]] = nil
 			end
 		end
-		item.s = keep
-		if next(folded) then
-			local byDay = {}
-			for _, str in ipairs(item.d or {}) do
-				local d = DecodeDay(str)
-				if d then byDay[d.day] = d end
-			end
-			for day, acc in pairs(folded) do
-				local d = byDay[day]
-				if d then
-					d.min = min(d.min, acc.min)
-					d.mktSum, d.n = d.mktSum + acc.mktSum, d.n + acc.n
-					d.qtySum, d.aucSum, d.selSum, d.nFull = d.qtySum + acc.qtySum, d.aucSum + acc.aucSum, d.selSum + acc.selSum, d.nFull + acc.nFull
-				else
-					byDay[day] = acc
-				end
-			end
-			local days = {}
-			for _, d in pairs(byDay) do days[#days + 1] = d end
-			table.sort(days, function(a, b) return a.day < b.day end)
-			item.d = {}
-			for _, d in ipairs(days) do item.d[#item.d + 1] = EncodeDay(d) end
+		i = stop + 1
+		if i > #keys then
+			H.ResetIndex()
+			return true
 		end
-		local dkeep = {}
-		for _, str in ipairs(item.d or {}) do
-			local d = DecodeDay(str)
-			if d and d.day >= keepCutoff then dkeep[#dkeep + 1] = str end
-		end
-		item.d = dkeep
-		if #item.s == 0 and #item.d == 0 then ns.realm.items[key] = nil end
+	end
+	if async then
+		ns.RunTask(function() return step(500) end)
+	else
+		step(#keys)
 	end
 end
 
 ---------------------------------------------------------------------------
--- Reading
+-- Statistics
 ---------------------------------------------------------------------------
-function H.GetRaw(item)
-	if not item then return {} end
-	if rawCache[item] then return rawCache[item] end
-	local out = {}
-	for _, str in ipairs(item.s or {}) do
-		local snap = H.DecodeSnap(str)
-		if snap then out[#out + 1] = snap end
-	end
-	table.sort(out, function(a, b) return a.t < b.t end)
-	rawCache[item] = out
-	return out
-end
-
-function H.GetLatest(key)
-	local raw = H.GetRaw(H.GetItem(key))
-	return raw[#raw]
-end
-
--- Daily series (oldest first): { day, t, min, mkt, qty, auc, sel, hasSupply }
--- sinceDays limits how far back to go; nil means everything.
-function H.GetDaily(item, now, sinceDays)
-	if not item then return {} end
-	now = now or time()
-	local cutoff = sinceDays and ns.DayKey(now - sinceDays * DAY) or 0
-	local byDay = {}
-	for _, str in ipairs(item.d or {}) do
-		local d = DecodeDay(str)
-		if d and d.day >= cutoff then byDay[d.day] = d end
-	end
-	for _, snap in ipairs(H.GetRaw(item)) do
-		local day = ns.DayKey(snap.t)
-		if day >= cutoff then
-			-- decoded summaries are fresh tables, so adding to them is safe
-			local acc = byDay[day]
-			if not acc then
-				acc = NewDay(day)
-				byDay[day] = acc
-			end
-			AddToDay(acc, snap)
-		end
-	end
-	local out = {}
-	for day, d in pairs(byDay) do
-		if d.n > 0 then
-			out[#out + 1] = {
-				day = day, t = ns.DayToTime(day), min = d.min, mkt = d.mktSum / d.n,
-				qty = d.nFull > 0 and d.qtySum / d.nFull or nil,
-				auc = d.nFull > 0 and d.aucSum / d.nFull or nil,
-				sel = d.nFull > 0 and d.selSum / d.nFull or nil,
-			}
-		end
-	end
-	table.sort(out, function(a, b) return a.day < b.day end)
-	return out
-end
-
 local function Avg(series, field, fromDay)
 	local sum, n = 0, 0
 	for _, d in ipairs(series) do
@@ -226,9 +408,8 @@ function H.GetStats(key, now)
 	local series = H.GetDaily(item, now, 30)
 	local latest = H.GetLatest(key)
 	local stats = { latest = latest, days = #series, series = series }
-	local d7, d30 = ns.DayKey(now - 7 * DAY), ns.DayKey(now - 30 * DAY)
-	stats.avg7 = Avg(series, "mkt", d7)
-	stats.avg30 = Avg(series, "mkt", d30)
+	stats.avg7 = Avg(series, "mkt", ns.DayKey(now - 7 * DAY))
+	stats.avg30 = Avg(series, "mkt", ns.DayKey(now - 30 * DAY))
 	for _, d in ipairs(series) do
 		stats.low30 = stats.low30 and min(stats.low30, d.min) or d.min
 		stats.high30 = stats.high30 and max(stats.high30, d.mkt) or d.mkt
@@ -256,8 +437,8 @@ end
 function H.GetReference(key, now)
 	now = now or time()
 	local item = H.GetItem(key)
-	local today = ns.DayKey(now)
 	if item then
+		local today = ns.DayKey(now)
 		local values = {}
 		for _, d in ipairs(H.GetDaily(item, now, 14)) do
 			if d.day ~= today then values[#values + 1] = d.mkt end
@@ -273,7 +454,7 @@ function H.GetReference(key, now)
 	return nil
 end
 
--- Typical supply (median auctions-on-AH quantity per day, excluding today).
+-- Typical supply (median units on the AH per day, excluding today).
 function H.GetNormalSupply(key, now)
 	now = now or time()
 	local item = H.GetItem(key)
@@ -313,41 +494,39 @@ function H.CountData()
 	local items, snaps, days = 0, 0, 0
 	for _, item in pairs(ns.realm and ns.realm.items or {}) do
 		items = items + 1
-		snaps = snaps + #(item.s or {})
-		days = days + #(item.d or {})
+		if item.s ~= "" then snaps = snaps + select(2, item.s:gsub(";", "")) + 1 end
+		if item.d ~= "" then days = days + select(2, item.d:gsub(";", "")) + 1 end
 	end
 	return items, snaps, days
 end
 
--- Find item keys whose name contains the (lowercase) search text.
+-- Display name for a key, even for imported items we have not seen yet.
+function H.GetName(key)
+	local item = H.GetItem(key)
+	if item and item.n then return item.n end
+	local name = GetItemInfo(ns.ItemStringFromKey(key) or 0)
+	if name and item then item.n = name end
+	return name
+end
+
+-- Find item keys whose name contains the (lowercase) search text, most recently seen first.
 function H.Search(text, limit)
 	text = (text or ""):lower()
+	local items = ns.realm and ns.realm.items or {}
 	local out = {}
-	for key, item in pairs(ns.realm and ns.realm.items or {}) do
-		if item.n and (text == "" or item.n:lower():find(text, 1, true)) then
+	for key, item in pairs(items) do
+		local name = item.n or H.GetName(key)
+		if name and (text == "" or name:lower():find(text, 1, true)) then
 			out[#out + 1] = key
 		end
 	end
 	table.sort(out, function(a, b)
-		local ia, ib = ns.realm.items[a], ns.realm.items[b]
+		local ia, ib = items[a], items[b]
 		if (ia.seen or 0) ~= (ib.seen or 0) then return (ia.seen or 0) > (ib.seen or 0) end
-		return ia.n < ib.n
+		return (ia.n or "") < (ib.n or "")
 	end)
 	if limit and #out > limit then
 		for i = #out, limit + 1, -1 do out[i] = nil end
 	end
 	return out
-end
-
--- Find a stored key by exact (case-insensitive) item name.
-function H.FindKeyByName(name)
-	if not name then return nil end
-	name = name:lower()
-	local best, bestSeen
-	for key, item in pairs(ns.realm and ns.realm.items or {}) do
-		if item.n and item.n:lower() == name and (item.seen or 0) > (bestSeen or -1) then
-			best, bestSeen = key, item.seen or 0
-		end
-	end
-	return best
 end
