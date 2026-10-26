@@ -40,10 +40,17 @@ for i, t in ipairs(ns.TYPES) do
     typeOrder[t.key] = i
     typeColor[t.key] = t.color
 end
+-- Baseline spells to pre-fill as "ready", built once: [class or race] = { baseID, ... }
+local prefill = { GENERAL = {} }
 for id, s in pairs(ns.SPELLS) do
     baseOf[id] = id
     if s.ranks then
         for _, r in ipairs(s.ranks) do baseOf[r] = id end
+    end
+    if not s.talent then
+        local key = s.race or s.class
+        prefill[key] = prefill[key] or {}
+        table.insert(prefill[key], id)
     end
 end
 
@@ -158,6 +165,19 @@ anchor.text:SetText("GSD Enemy CDs (drag)")
 
 local rows = {}
 
+-- Font strings must have a font before SetText, so this runs at creation and on resize.
+local function SetIconFont(icon, size)
+    icon.timer:SetFont(STANDARD_TEXT_FONT, math.max(9, math.floor(size * 0.42)), "OUTLINE")
+end
+
+-- Only touch the widget when the value changes; Render runs 10x a second.
+local function SetText(fs, text)
+    if fs.shownText ~= text then
+        fs:SetText(text)
+        fs.shownText = text
+    end
+end
+
 local function CreateIcon(parent)
     local icon = CreateFrame("Frame", nil, parent)
     icon.border = icon:CreateTexture(nil, "BACKGROUND")
@@ -177,6 +197,7 @@ local function CreateIcon(parent)
     overlay:SetFrameLevel(icon.cd:GetFrameLevel() + 2)
     icon.timer = overlay:CreateFontString(nil, "OVERLAY")
     icon.timer:SetPoint("CENTER", 0, 0)
+    SetIconFont(icon, db.iconSize)
     return icon
 end
 
@@ -203,7 +224,7 @@ local function LayoutRow(row, i)
         icon:SetSize(size, size)
         icon:ClearAllPoints()
         icon:SetPoint("LEFT", row, "LEFT", (j - 1) * (size + 3), 0)
-        icon.timer:SetFont(STANDARD_TEXT_FONT, math.max(9, math.floor(size * 0.42)), "OUTLINE")
+        SetIconFont(icon, size)
     end
 end
 
@@ -213,25 +234,25 @@ local function FormatTime(t)
 end
 
 local function UpdateIcon(icon, base, cd, now)
-    local s = ns.SPELLS[base]
-    icon.tex:SetTexture((GetSpellTexture and GetSpellTexture(base)) or "Interface\\Icons\\INV_Misc_QuestionMark")
-    local c = typeColor[s.type]
-    icon.border:SetVertexColor(c[1], c[2], c[3])
+    if icon.base ~= base then
+        icon.tex:SetTexture((GetSpellTexture and GetSpellTexture(base)) or "Interface\\Icons\\INV_Misc_QuestionMark")
+        local c = typeColor[ns.SPELLS[base].type]
+        icon.border:SetVertexColor(c[1], c[2], c[3])
+        icon.base = base
+    end
     if cd then
-        icon.timer:SetText(FormatTime(cd.start + cd.duration - now))
-        icon.tex:SetDesaturated(true)
+        SetText(icon.timer, FormatTime(cd.start + cd.duration - now))
         if icon.cdStart ~= cd.start or icon.cdDuration ~= cd.duration then
+            icon.tex:SetDesaturated(true)
             icon.cd:SetCooldown(cd.start, cd.duration)
             icon.cdStart, icon.cdDuration = cd.start, cd.duration
         end
-    else
+    elseif icon.cdStart or icon.timer.shownText ~= "" then
         -- known spell that hasn't been used: ready
-        icon.timer:SetText("")
+        SetText(icon.timer, "")
         icon.tex:SetDesaturated(false)
-        if icon.cdStart then
-            icon.cd:SetCooldown(0, 0)
-            icon.cdStart, icon.cdDuration = nil, nil
-        end
+        icon.cd:SetCooldown(0, 0)
+        icon.cdStart, icon.cdDuration = nil, nil
     end
     icon:Show()
 end
@@ -245,20 +266,34 @@ local function SortSpells(a, b)
     return a.base < b.base
 end
 
-local function BuildSpellList(e, list, showUnused)
-    wipe(list)
-    for base, cd in pairs(e.cds) do list[#list + 1] = { base = base, cd = cd } end
-    if showUnused and e.class then
-        for base, s in pairs(ns.SPELLS) do
-            if not e.cds[base] and not s.talent and (s.class == e.class or (s.class == "GENERAL" and (not s.race or s.race == e.race))) then
-                list[#list + 1] = { base = base }
-            end
-        end
-    end
-    table.sort(list, SortSpells)
+local spellList, spellPool = {}, {}
+local function AddSpell(base, cd)
+    local n = #spellList + 1
+    local item = spellPool[n] or {}
+    spellPool[n] = item
+    item.base, item.cd = base, cd
+    spellList[n] = item
 end
 
-local sortList, spellList = {}, {}
+local function AddUnused(e, ids)
+    if not ids then return end
+    for _, base in ipairs(ids) do
+        if not e.cds[base] then AddSpell(base, nil) end
+    end
+end
+
+local function BuildSpellList(e, showUnused)
+    wipe(spellList)
+    for base, cd in pairs(e.cds) do AddSpell(base, cd) end
+    if showUnused and e.class then
+        AddUnused(e, prefill.GENERAL)
+        AddUnused(e, prefill[e.class])
+        if e.race then AddUnused(e, prefill[e.race]) end
+    end
+    table.sort(spellList, SortSpells)
+end
+
+local sortList, sortPool = {}, {}
 local function SortEnemies(a, b)
     if a.priority ~= b.priority then return a.priority < b.priority end
     if a.e.arena ~= b.e.arena then return (a.e.arena or 9) < (b.e.arena or 9) end
@@ -273,9 +308,13 @@ local function Render()
     wipe(sortList)
     local targetGUID, focusGUID = UnitGUID("target"), UnitGUID("focus")
     for guid, e in pairs(enemies) do
-        local priority = (guid == targetGUID and 1) or (guid == focusGUID and 2) or 3
-        if inArena then priority = 3 end -- keep arena1-5 order stable
-        sortList[#sortList + 1] = { guid = guid, e = e, priority = priority }
+        local n = #sortList + 1
+        local item = sortPool[n] or {}
+        sortPool[n] = item
+        item.guid, item.e = guid, e
+        -- in arena keep arena1-5 order stable instead of jumping to the target
+        item.priority = (not inArena and ((guid == targetGUID and 1) or (guid == focusGUID and 2))) or 3
+        sortList[n] = item
     end
     table.sort(sortList, SortEnemies)
 
@@ -283,7 +322,7 @@ local function Render()
     for _, item in ipairs(sortList) do
         if shown >= db.maxRows then break end
         local e = item.e
-        BuildSpellList(e, spellList, showUnused)
+        BuildSpellList(e, showUnused)
         if #spellList > 0 then
             shown = shown + 1
             local row = GetRow(shown)
@@ -296,9 +335,12 @@ local function Render()
                 LayoutRow(row, shown)
                 row.needsLayout, row.layoutSize = nil, db.iconSize
             end
-            local cc = e.class and RAID_CLASS_COLORS[e.class]
-            row.name:SetText(item.guid == targetGUID and ("> " .. e.name) or e.name)
-            if cc then row.name:SetTextColor(cc.r, cc.g, cc.b) else row.name:SetTextColor(1, 1, 1) end
+            SetText(row.name, item.guid == targetGUID and ("> " .. e.name) or e.name)
+            if row.shownClass ~= e.class then
+                local cc = e.class and RAID_CLASS_COLORS[e.class]
+                if cc then row.name:SetTextColor(cc.r, cc.g, cc.b) else row.name:SetTextColor(1, 1, 1) end
+                row.shownClass = e.class
+            end
             for j = 1, count do
                 UpdateIcon(row.icons[j], spellList[j].base, spellList[j].cd, now)
             end
@@ -343,11 +385,8 @@ end
 -------------------------------------------------------------------------------
 
 local function OnCombatLog()
+    -- No UNIT_DIED handling on purpose: cooldowns survive death, and Feign Death is logged as a death.
     local _, event, _, srcGUID, srcName, srcFlags, _, destGUID, _, _, _, spellID, spellName = CombatLogGetCurrentEventInfo()
-    if event == "UNIT_DIED" then
-        if enemies[destGUID] and not enemies[destGUID].arena then enemies[destGUID] = nil end
-        return
-    end
     if event ~= "SPELL_CAST_SUCCESS" and not (event == "SPELL_AURA_APPLIED" and srcGUID == destGUID) then return end
     if bit_band(srcFlags, HOSTILE) == 0 then return end
     if spellID == 0 then spellID = nameToBase[spellName] or 0 end
@@ -364,8 +403,8 @@ end
 
 -- Some casts (PvP trinket in particular) can be missing from the combat log.
 local function OnUnitCast(unit, spellID)
-    if not (unit:find("^arena%d$") or unit:find("^nameplate") or unit == "target" or unit == "focus") then return end
     if not (baseOf[spellID] or ns.RESETS[spellID]) then return end
+    if not (unit == "target" or unit == "focus" or unit:find("^arena%d$") or unit:find("^nameplate")) then return end
     if not UnitIsPlayer(unit) or not UnitCanAttack("player", unit) then return end
     if OnCast(UnitGUID(unit), UnitName(unit), spellID) then StartTicker() end
 end

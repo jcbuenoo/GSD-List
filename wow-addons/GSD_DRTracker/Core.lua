@@ -15,6 +15,7 @@ local GetSpellTexture = GetSpellTexture or (C_Spell and C_Spell.GetSpellTexture)
 -- Seconds a CC is assumed to last if we never see it fade (target out of combat log range).
 local FAILSAFE_ACTIVE = 60
 local MAX_LEVEL = 3
+local MIN_LABEL_SIZE = 24 -- below this icon size the labels and the reset timer don't fit and are hidden
 
 local DEFAULTS = {
     point = { "CENTER", "UIParent", "CENTER", 0, -150 },
@@ -24,6 +25,7 @@ local DEFAULTS = {
     maxRows = 8,
     resetTime = ns.RESET_TIME,
     showSelf = false,
+    showLabels = true,
     categories = {}, -- [key] = false to hide
 }
 
@@ -80,8 +82,10 @@ local function ApplyDR(guid, name, spellID, cat)
     local now = GetTime()
     local u = GetUnitEntry(guid, name)
     local e = u.cats[cat]
-    if e and (e.active or now < e.resetAt) then
-        e.level = math.min(e.level + 1, MAX_LEVEL)
+    -- A CC can't land on an immune target, so landing at MAX_LEVEL means the real
+    -- (15-20s) reset already happened: start over instead of staying on "IMM".
+    if e and e.level < MAX_LEVEL and (e.active or now < e.resetAt) then
+        e.level = e.level + 1
     else
         e = { level = 1, auras = {} }
         u.cats[cat] = e
@@ -146,6 +150,22 @@ anchor.text:SetText("GSD DR Tracker (drag)")
 
 local rows = {}
 
+-- Font strings must have a font before SetText, so this runs at creation and on resize.
+local function SetIconFonts(icon, size)
+    local fontSize = math.max(8, math.floor(size * 0.36))
+    icon.level:SetFont(STANDARD_TEXT_FONT, fontSize, "OUTLINE")
+    icon.timer:SetFont(STANDARD_TEXT_FONT, fontSize + 1, "OUTLINE")
+    icon.label:SetFont(STANDARD_TEXT_FONT, 8, "OUTLINE")
+end
+
+-- Only touch the widget when the value changes; Render runs 10x a second.
+local function SetText(fs, text)
+    if fs.shownText ~= text then
+        fs:SetText(text)
+        fs.shownText = text
+    end
+end
+
 local function CreateIcon(parent)
     local icon = CreateFrame("Frame", nil, parent)
     icon.border = icon:CreateTexture(nil, "BACKGROUND")
@@ -170,6 +190,7 @@ local function CreateIcon(parent)
     icon.timer:SetPoint("BOTTOM", 0, 1)
     icon.label = overlay:CreateFontString(nil, "OVERLAY")
     icon.label:SetPoint("TOP", icon, "BOTTOM", 0, -1)
+    SetIconFonts(icon, db.iconSize)
     return icon
 end
 
@@ -184,46 +205,64 @@ local function GetRow(i)
     return row
 end
 
+local function LabelsShown()
+    return db.showLabels and db.iconSize >= MIN_LABEL_SIZE
+end
+
 local function LayoutRow(row, i)
     local size = db.iconSize
-    local rowHeight = size + 14 -- room for the category label under the icon
+    local labels = LabelsShown()
+    local rowHeight = labels and size + 12 or size + 2 -- room for the category label under the icon
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 94, -4 - (i - 1) * (rowHeight + 2))
-    row:SetSize(size * #ns.CATEGORIES, rowHeight)
+    row:SetSize((size + 3) * #ns.CATEGORIES, rowHeight)
     row.name:ClearAllPoints()
     row.name:SetPoint("RIGHT", row, "TOPLEFT", -4, -size / 2)
     row.name:SetWidth(90)
-    local fontSize = math.max(8, math.floor(size * 0.36))
     for j, icon in ipairs(row.icons) do
         icon:SetSize(size, size)
         icon:ClearAllPoints()
         icon:SetPoint("TOPLEFT", row, "TOPLEFT", (j - 1) * (size + 3), 0)
-        icon.level:SetFont(STANDARD_TEXT_FONT, fontSize, "OUTLINE")
-        icon.timer:SetFont(STANDARD_TEXT_FONT, fontSize + 1, "OUTLINE")
-        icon.label:SetFont(STANDARD_TEXT_FONT, 8, "OUTLINE")
+        SetIconFonts(icon, size)
+        if labels then icon.label:Show() else icon.label:Hide() end
+        -- small icons only have room for one line: keep the DR level, the sweep shows the time
+        icon.level:ClearAllPoints()
+        if size >= MIN_LABEL_SIZE then
+            icon.level:SetPoint("TOP", 0, -1)
+            icon.timer:Show()
+        else
+            icon.level:SetPoint("CENTER", 0, 0)
+            icon.timer:Hide()
+        end
     end
 end
 
 local function UpdateIcon(icon, cat, e, now)
-    local tex = (GetSpellTexture and GetSpellTexture(e.spellID)) or "Interface\\Icons\\INV_Misc_QuestionMark"
-    icon.tex:SetTexture(tex)
-    local c = LEVEL_COLORS[e.level]
-    icon.border:SetVertexColor(c[1], c[2], c[3])
-    icon.level:SetText(LEVEL_TEXT[e.level])
-    icon.level:SetTextColor(c[1], c[2], c[3])
-    icon.label:SetText(catInfo[cat].label)
+    if icon.spellID ~= e.spellID then
+        icon.tex:SetTexture((GetSpellTexture and GetSpellTexture(e.spellID)) or "Interface\\Icons\\INV_Misc_QuestionMark")
+        icon.spellID = e.spellID
+    end
+    if icon.shownLevel ~= e.level then
+        local c = LEVEL_COLORS[e.level]
+        icon.border:SetVertexColor(c[1], c[2], c[3])
+        icon.level:SetTextColor(c[1], c[2], c[3])
+        SetText(icon.level, LEVEL_TEXT[e.level])
+        icon.shownLevel = e.level
+    end
+    SetText(icon.label, catInfo[cat].label)
     if e.active then
         -- CC is still on the target: the reset timer hasn't started yet
-        icon.timer:SetText("")
-        icon.tex:SetDesaturated(false)
-        icon.cd:SetCooldown(0, 0)
-        icon.cdStart = nil
+        SetText(icon.timer, "")
+        if icon.cdStart then
+            icon.tex:SetDesaturated(false)
+            icon.cd:SetCooldown(0, 0)
+            icon.cdStart = nil
+        end
     else
-        local remaining = e.resetAt - now
-        icon.timer:SetText(string.format("%d", math.ceil(remaining)))
-        icon.tex:SetDesaturated(true)
+        SetText(icon.timer, tostring(math.ceil(e.resetAt - now)))
         local start = e.resetAt - db.resetTime
         if icon.cdStart ~= start then
+            icon.tex:SetDesaturated(true)
             icon.cd:SetCooldown(start, db.resetTime)
             icon.cdStart = start
         end
@@ -231,7 +270,7 @@ local function UpdateIcon(icon, cat, e, now)
     icon:Show()
 end
 
-local sortList = {}
+local sortList, sortPool = {}, {}
 local function SortUnits(a, b)
     if a.priority ~= b.priority then return a.priority < b.priority end
     return (a.u.lastUpdate or 0) > (b.u.lastUpdate or 0)
@@ -247,8 +286,12 @@ local function Render()
     wipe(sortList)
     local targetGUID, focusGUID = UnitGUID("target"), UnitGUID("focus")
     for guid, u in pairs(units) do
-        local priority = (guid == targetGUID and 1) or (guid == focusGUID and 2) or 3
-        sortList[#sortList + 1] = { guid = guid, u = u, priority = priority }
+        local n = #sortList + 1
+        local item = sortPool[n] or {}
+        sortPool[n] = item
+        item.guid, item.u = guid, u
+        item.priority = (guid == targetGUID and 1) or (guid == focusGUID and 2) or 3
+        sortList[n] = item
     end
     table.sort(sortList, SortUnits)
 
@@ -272,9 +315,12 @@ local function Render()
                 LayoutRow(row, shown)
                 row.needsLayout, row.layoutSize = nil, db.iconSize
             end
-            local cc = u.class and RAID_CLASS_COLORS[u.class]
-            row.name:SetText(item.guid == targetGUID and ("> " .. u.name) or u.name)
-            if cc then row.name:SetTextColor(cc.r, cc.g, cc.b) else row.name:SetTextColor(1, 1, 1) end
+            SetText(row.name, item.guid == targetGUID and ("> " .. u.name) or u.name)
+            if row.shownClass ~= u.class then
+                local cc = u.class and RAID_CLASS_COLORS[u.class]
+                if cc then row.name:SetTextColor(cc.r, cc.g, cc.b) else row.name:SetTextColor(1, 1, 1) end
+                row.shownClass = u.class
+            end
             for j, cat in ipairs(catList) do
                 UpdateIcon(row.icons[j], cat, u.cats[cat], now)
             end
@@ -314,7 +360,9 @@ end
 local function OnCombatLog()
     local _, event, _, _, _, _, _, destGUID, destName, destFlags, _, spellID, spellName = CombatLogGetCurrentEventInfo()
     if event == "UNIT_DIED" then
-        units[destGUID] = nil
+        -- Feign Death is logged as UNIT_DIED; keep hunters' DRs
+        local u = units[destGUID]
+        if u and u.class ~= "HUNTER" then units[destGUID] = nil end
         return
     end
     if event ~= "SPELL_AURA_APPLIED" and event ~= "SPELL_AURA_REFRESH" and event ~= "SPELL_AURA_REMOVED" then return end
@@ -412,6 +460,7 @@ local function Help()
     Print("/gdr scale <0.5-3>, /gdr size <16-64>, /gdr rows <1-20>")
     Print("/gdr reset <15-20> - DR reset time in seconds (now " .. db.resetTime .. ")")
     Print("/gdr self - also track DRs on yourself (now " .. tostring(db.showSelf) .. ")")
+    Print("/gdr labels - category names under icons (now " .. tostring(db.showLabels) .. ", hidden below size " .. MIN_LABEL_SIZE .. ")")
     Print("/gdr preset all | rogue - rogue = Stun, Kidney, Incap (Sap), Blind/Cyclone only")
     Print("/gdr cats - list categories,  /gdr cat <key> - toggle one")
 end
@@ -437,6 +486,9 @@ SlashCmdList.GSDDR = function(msg)
     elseif cmd == "self" then
         db.showSelf = not db.showSelf
         Print("Track yourself: " .. tostring(db.showSelf))
+    elseif cmd == "labels" then
+        db.showLabels = not db.showLabels
+        Print("Labels: " .. tostring(db.showLabels))
     elseif cmd == "preset" and (arg == "all" or arg == "rogue") then
         for _, c in ipairs(ns.CATEGORIES) do
             db.categories[c.key] = (arg == "all" or ns.ROGUE_PRESET[c.key]) and true or false

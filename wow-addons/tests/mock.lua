@@ -40,8 +40,12 @@ local function newObj(kind, parent)
     if parent then table.insert(parent.children, o) end
     local methods = {
         CreateTexture = function(self) return newObj("Texture", self) end,
-        CreateFontString = function(self) return newObj("FontString", self) end,
-        SetText = function(self, t) self.text = t end,
+        CreateFontString = function(self, _, _, template) local f = newObj("FontString", self); f.font = template; return f end,
+        SetFont = function(self, f, size) self.font = f; self.fontSize = size end,
+        SetText = function(self, t)
+            if not self.font then error("Font not set") end -- matches the real client
+            self.text = t
+        end,
         GetText = function(self) return self.text end,
         Show = function(self) self.shown = true end,
         Hide = function(self) self.shown = false end,
@@ -53,9 +57,32 @@ local function newObj(kind, parent)
         SetDesaturated = function(self, d) self.desat = d end,
         SetCooldown = function(self, s, d) self.cdStart, self.cdDur = s, d end,
         GetFrameLevel = function() return 1 end,
+        -- geometry, used by layout.lua for the interface test
+        SetPoint = function(self, p, a, b, c, d)
+            self.points = self.points or {}
+            local rel, rp, x, y
+            if type(a) == "table" then rel, rp, x, y = a, b, c, d
+            elseif type(a) == "number" then rel, rp, x, y = self.parent, p, a, b
+            else rel, rp, x, y = self.parent, p, 0, 0 end
+            table.insert(self.points, { p = p, rel = rel, rp = rp or p, x = x or 0, y = y or 0 })
+        end,
+        ClearAllPoints = function(self) self.points = {}; self.allPoints = nil end,
+        SetAllPoints = function(self, rel) self.allPoints = rel or self.parent end,
+        SetSize = function(self, w, h) self.w, self.h = w, h end,
+        SetWidth = function(self, w) self.w = w end,
+        SetHeight = function(self, h) self.h = h end,
+        SetScale = function(self, sc) self.scale = sc end,
+        SetTextColor = function(self, r, g, b) self.textColor = { r, g, b } end,
+        SetBackdropColor = function(self, r, g, b, a) self.bg = { r, g, b, a } end,
+        SetJustifyH = function(self, j) self.justify = j end,
+        SetReverse = function(self, r) self.reverse = r end,
         GetPoint = function() return "CENTER", nil, "CENTER", 0, 0 end,
     }
-    return setmetatable(o, { __index = function(_, k) return methods[k] or function() end end })
+    -- Capitalised names are API methods (unknown ones are no-ops); anything else is a plain field.
+    return setmetatable(o, { __index = function(_, k)
+        if methods[k] then return methods[k] end
+        if type(k) == "string" and k:find("^%u") then return function() end end
+    end })
 end
 UIParent = newObj("Frame")
 FRAMES = {}
@@ -86,7 +113,7 @@ function Rows(anchor)
             local r = { name = row.name.text, icons = {} }
             for _, ic in ipairs(row.icons) do
                 if ic.shown then
-                    r.icons[#r.icons + 1] = { tex = ic.tex.texture, level = rawget(ic, "level") and ic.level.text, timer = ic.timer.text, label = rawget(ic, "label") and ic.label.text, color = ic.border.color, desat = ic.tex.desat }
+                    r.icons[#r.icons + 1] = { tex = ic.tex.texture, level = ic.level and ic.level.text, timer = ic.timer.text, label = ic.label and ic.label.text, color = ic.border.color, desat = ic.tex.desat }
                 end
             end
             out[#out + 1] = r

@@ -36,14 +36,28 @@ step(3); Log("SPELL_AURA_REMOVED", "x", "Pally", H, "e1", "Healbot", H, 10308)
 Log("SPELL_AURA_APPLIED", "x", "War", H, "e1", "Healbot", H, 25274) -- Intercept stun
 step(0.1); r = find(Rows(A), "Healbot")
 check(icon(r, "Stun").level == "IMM", "third stun -> immune")
-Log("SPELL_AURA_REFRESH", "x", "War", H, "e1", "Healbot", H, 25274)
-step(0.1); r = find(Rows(A), "Healbot")
-check(icon(r, "Stun").level == "IMM", "level capped at immune")
 Log("SPELL_AURA_REMOVED", "x", "War", H, "e1", "Healbot", H, 25274)
 step(19.5); r = find(Rows(A), "Healbot")
 check(icon(r, "Stun") ~= nil, "stun DR still present at 19.5s")
 step(0.6); r = find(Rows(A), "Healbot")
 check(r == nil or icon(r, "Stun") == nil, "stun DR gone after 20s")
+
+-- a stun landing while we show IMM means the real DR reset early (15s): self-correct
+Log("SPELL_AURA_APPLIED", "me", "Me", 0x511, "e1", "Healbot", H, 1833)
+Log("SPELL_AURA_REMOVED", "me", "Me", 0x511, "e1", "Healbot", H, 1833)
+Log("SPELL_AURA_APPLIED", "me", "Me", 0x511, "e1", "Healbot", H, 1833)
+Log("SPELL_AURA_REMOVED", "me", "Me", 0x511, "e1", "Healbot", H, 1833)
+Log("SPELL_AURA_APPLIED", "me", "Me", 0x511, "e1", "Healbot", H, 1833)
+step(0.1); check(icon(find(Rows(A), "Healbot"), "Stun").level == "IMM", "three stuns -> IMM")
+Log("SPELL_AURA_REMOVED", "me", "Me", 0x511, "e1", "Healbot", H, 1833)
+step(16); Log("SPELL_AURA_APPLIED", "me", "Me", 0x511, "e1", "Healbot", H, 1833)
+step(0.1); check(icon(find(Rows(A), "Healbot"), "Stun").level == "50%", "stun landing at IMM self-corrects to fresh DR (50% next)")
+
+-- Feign Death is logged as UNIT_DIED: hunters keep their DRs, others are cleared
+PLAYERINFO["h1"] = { "HUNTER", "Dwarf" }
+Log("SPELL_AURA_APPLIED", "me", "Me", 0x511, "h1", "Huntard", H, 19503)
+Log("UNIT_DIED", nil, nil, 0, "h1", "Huntard", H, nil)
+step(0.1); check(find(Rows(A), "Huntard") ~= nil, "hunter UNIT_DIED (Feign Death) keeps DRs")
 
 -- friendly dest ignored
 Log("SPELL_AURA_APPLIED", "e9", "Enemy", H, "f1", "Buddy", 0x411, 1833)
@@ -65,13 +79,13 @@ step(20); check(find(Rows(A), "Runner") == nil, "failsafe entry gone 20s later")
 -- spellID 0 fallback by name
 Log("SPELL_AURA_APPLIED", "me", "Me", 0x511, "e3", "Zero", H, 0)
 CLEU[12] = 0; CLEU[13] = "Spell2094"; Fire("COMBAT_LOG_EVENT_UNFILTERED")
-step(0.1); r = find(Rows(A), "Zero"); check(icon(r, "Blind/Cyc") ~= nil, "spellID 0 resolved by name (Blind)")
+step(0.1); r = find(Rows(A), "Zero"); check(icon(r, "Blind") ~= nil, "spellID 0 resolved by name (Blind)")
 
 -- presets
 Log("SPELL_AURA_APPLIED", "x", "Lock", H, "e3", "Zero", H, 6215)
 step(0.1); check(icon(find(Rows(A), "Zero"), "Fear") ~= nil, "fear shown with all categories")
 SlashCmdList.GSDDR("preset rogue")
-step(0.1); r = find(Rows(A), "Zero"); check(icon(r, "Fear") == nil and icon(r, "Blind/Cyc") ~= nil, "rogue preset hides fear, keeps Blind")
+step(0.1); r = find(Rows(A), "Zero"); check(icon(r, "Fear") == nil and icon(r, "Blind") ~= nil, "rogue preset hides fear, keeps Blind")
 SlashCmdList.GSDDR("preset all")
 
 -- unit died

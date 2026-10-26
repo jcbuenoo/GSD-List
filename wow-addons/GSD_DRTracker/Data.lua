@@ -7,23 +7,23 @@ local _, ns = ...
 -- 20 is the safe assumption (DRList uses the same value).
 ns.RESET_TIME = 20
 
--- Display order, short label, and what shares the category.
+-- Display order, short label (max 6 chars so labels fit under 24px+ icons), and what shares the category.
 -- Rogue-relevant categories come first.
 ns.CATEGORIES = {
     { key = "stun",         label = "Stun",       desc = "Cheap Shot, HoJ, Bash, Pounce, Intercept, Charge, Shadowfury, Concussion Blow, Intimidation, War Stomp" },
     { key = "kidney_shot",  label = "Kidney",     desc = "Kidney Shot only (separate from Cheap Shot in TBC)" },
     { key = "incapacitate", label = "Incap",      desc = "Sap, Gouge, Polymorph, Repentance, Freezing Trap, Wyvern Sting, Maim, Hibernate, Banish" },
-    { key = "disorient",    label = "Blind/Cyc",  desc = "Blind, Cyclone" },
+    { key = "disorient",    label = "Blind",      desc = "Blind, Cyclone" },
     { key = "fear",         label = "Fear",       desc = "Fear, Psychic Scream, Howl of Terror, Seduction, Intimidating Shout, Scare Beast, Turn Evil" },
-    { key = "random_stun",  label = "Proc Stun",  desc = "Impact, Mace Spec, Blackout, Improved Concussive Shot, Seal of Justice, Stoneclaw" },
+    { key = "random_stun",  label = "RStun",      desc = "Impact, Mace Spec, Blackout, Improved Concussive Shot, Seal of Justice, Stoneclaw" },
     { key = "root",         label = "Root",       desc = "Frost Nova, Entangling Roots, Nature's Grasp, Freeze (Water Elemental)" },
-    { key = "random_root",  label = "Proc Root",  desc = "Frostbite, Entrapment, Improved Hamstring, Improved Wing Clip" },
-    { key = "scatter",      label = "Scatter",    desc = "Scatter Shot, Dragon's Breath" },
+    { key = "random_root",  label = "RRoot",      desc = "Frostbite, Entrapment, Improved Hamstring, Improved Wing Clip" },
+    { key = "scatter",      label = "Scat",       desc = "Scatter Shot, Dragon's Breath" },
     { key = "death_coil",   label = "Coil",       desc = "Death Coil only" },
     { key = "mind_control", label = "MC",         desc = "Mind Control" },
     { key = "disarm",       label = "Disarm",     desc = "Disarm, Riposte" },
-    { key = "counterattack",label = "Ctrattack",  desc = "Counterattack only" },
-    { key = "chastise",     label = "Chastise",   desc = "Chastise only" },
+    { key = "counterattack",label = "CAtk",       desc = "Counterattack only" },
+    { key = "chastise",     label = "Chast",      desc = "Chastise only" },
     { key = "unstable_affliction", label = "UA",  desc = "Unstable Affliction silence" },
 }
 

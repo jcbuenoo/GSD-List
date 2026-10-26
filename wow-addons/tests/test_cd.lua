@@ -54,6 +54,17 @@ step(0.1); r = find(Rows(A), "Frosty"); check(icon(r, 45438) and icon(r, 122), "
 cast("m1", "Frosty", 11958)
 step(0.1); r = find(Rows(A), "Frosty"); check(icon(r, 45438) == nil and icon(r, 122) == nil and icon(r, 11958), "Cold Snap resets frost CDs")
 
+-- death doesn't reset cooldowns (BG rez) and Feign Death logs UNIT_DIED
+Log("UNIT_DIED", nil, nil, 0, "m1", "Frosty", H, nil)
+step(0.1); check(icon(find(Rows(A), "Frosty"), 11958) ~= nil, "cooldowns kept through UNIT_DIED")
+
+-- icons reused across spells keep correct texture/state
+cast("m1", "Frosty", 2139)
+step(0.1); r = find(Rows(A), "Frosty")
+local seenTex = {}
+for _, i in ipairs(r.icons) do seenTex[i.tex] = (seenTex[i.tex] or 0) + 1 end
+check(seenTex[2139] == 1 and seenTex[11958] == 1 and seenTex[42292] == 1, "icon slots show distinct correct textures after reshuffle")
+
 -- friendly casts ignored
 cast("f1", "Buddy", 1766, 0x411)
 step(0.1); check(find(Rows(A), "Buddy") == nil, "friendly casts ignored")

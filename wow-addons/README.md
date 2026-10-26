@@ -25,13 +25,15 @@ Each icon is one DR category on that enemy. The icon shows the last spell used, 
 - **25%** (orange): quarter duration
 - **IMM** (red): immune
 - No number at the bottom means the CC is still on the target, so the 20s reset hasn't started yet. Once it fades, a countdown and sweep show when the DR resets.
+- If a CC lands while the bar shows IMM, the DR must already have reset (TBC resets take 15-20s), so the bar corrects itself to 50%.
+- Below 24px icon size, the category name and countdown are hidden so the DR level stays readable. The sweep still shows the time.
 
 The things rogues usually get wrong in TBC:
 
 - **Cheap Shot and Kidney Shot do not share DR.** Cheap Shot is in the shared *Stun* category (HoJ, Bash, Pounce, Intercept, Charge, Shadowfury, Concussion Blow, Intimidation, War Stomp). Kidney Shot only DRs with itself.
 - **Sap shares DR with Gouge, Polymorph, Repentance, Freezing Trap, Wyvern Sting, Maim, Hibernate and Banish** (the *Incap* category). If the mage just sheeped someone, your Sap on them is 50%.
 - **Blind shares DR with Cyclone only**, not with Sap.
-- Proc stuns (Impact, Mace Specialization, Blackout and others) have their own *Proc Stun* category.
+- Proc stuns (Impact, Mace Specialization, Blackout and others) have their own *RStun* (random stun) category.
 
 Commands:
 
@@ -43,6 +45,7 @@ Commands:
 /gdr cats               list categories and what's in them
 /gdr cat <key>          toggle one category (e.g. /gdr cat fear)
 /gdr self               also show DRs on yourself
+/gdr labels             show/hide category names under icons
 /gdr reset <15-20>      DR reset window (default 20)
 /gdr scale <n> | size <px> | rows <n>
 ```
@@ -54,6 +57,7 @@ An icon appears when an enemy uses a tracked spell, with a sweep and a timer unt
 - **In arena** (default `unused arena`), each opponent's row is pre-filled with their baseline class spells, PvP trinket and racial, all shown as ready. Talent spells (Cold Snap, Preparation, Pain Suppression and others) appear once they're used.
 - **Resets are handled.** Cold Snap clears the frost cooldowns, Preparation clears Vanish/Evasion/Sprint/Shadowstep/Cold Blood/Premeditation, Readiness clears hunter cooldowns, and summoning a new Felhunter clears Spell Lock.
 - **Pets**: in arena, Felhunter Spell Lock is shown on the warlock's row.
+- **Cooldowns survive death.** A player who dies and rezzes in a BG still shows their used trinket. Hunter Feign Death (logged as a death) doesn't clear anything either.
 - **The PvP trinket defaults to 2 min** (Medallion). The old level-60 Insignia is 5 min and casts the same spell, so the addon can't tell them apart. 2 min is the safer guess: the bar may show their trinket as ready when it's actually down, but never the other way round. If you know they have an Insignia, use `/gcd trinket 300`.
 - **Durations assume common PvP talents by default.** For example: Vanish/Evasion/Sprint 3:30, Blind 1:30, HoJ 45s, Ice Block 4 min, Intercept 15s. This is conservative for the same reason. Use `/gcd talents` to switch to untalented base values.
 
@@ -94,4 +98,8 @@ The addons in this folder differ in being a single standalone bar each, covering
 pip install lupa
 python3 wow-addons/tests/run.py wow-addons wow-addons/tests/test_dr.lua
 python3 wow-addons/tests/run.py wow-addons wow-addons/tests/test_cd.lua
+python3 wow-addons/tests/ui_test.py wow-addons <out_dir>
 ```
+
+The mock throws "Font not set" when text is set on a font string with no font, like the real client does.
+`ui_test.py` resolves every frame anchor into screen coordinates. It checks that icons, rows, labels and the text inside icons don't collide at sizes 16, 30 and 36, then writes `ui.html` and, if Node Playwright is installed, a `ui.png` screenshot.
