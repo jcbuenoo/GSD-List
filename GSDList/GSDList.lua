@@ -1,8 +1,13 @@
 -- GSD List: a lightweight notepad with an optional to-do list.
 -- Uses only textures, fonts and templates that ship with the game client.
+-- The window is built the first time it is opened; until then only the
+-- minimap button exists.
 
 local ADDON_NAME = ...
 local GSD = {}
+
+local CreateFrame, GameTooltip, tinsert, tremove = CreateFrame, GameTooltip, tinsert, tremove
+local cos, sin, rad, deg, atan2, max = math.cos, math.sin, math.rad, math.deg, math.atan2, math.max
 
 local DEFAULTS = {
     notes = "",
@@ -11,13 +16,26 @@ local DEFAULTS = {
     activeTab = "notes",
     width = 360,
     height = 420,
-    point = nil,
     minimap = { hide = false, angle = 200 },
 }
 
 local BACKDROP_TEMPLATE = BackdropTemplateMixin and "BackdropTemplate" or nil
 local ROW_HEIGHT = 22
+local MAX_TODO_LETTERS = 255
 local db
+
+local DIALOG_BACKDROP = {
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    tile = true, tileSize = 32, edgeSize = 32,
+    insets = { left = 11, right = 12, top = 12, bottom = 11 },
+}
+local INSET_BACKDROP = {
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 16,
+    insets = { left = 4, right = 4, top = 4, bottom = 4 },
+}
 
 local function CopyDefaults(src, dst)
     for k, v in pairs(src) do
@@ -30,19 +48,20 @@ local function CopyDefaults(src, dst)
     end
 end
 
-local function Print(msg)
-    DEFAULT_CHAT_FRAME:AddMessage(NORMAL_FONT_COLOR_CODE .. "GSD List:|r " .. msg)
+-- Drop malformed entries (e.g. from a hand-edited SavedVariables file)
+local function SanitizeTodos(todos)
+    for i = #todos, 1, -1 do
+        local item = todos[i]
+        if type(item) ~= "table" or type(item.text) ~= "string" or item.text == "" then
+            tremove(todos, i)
+        else
+            item.done = item.done and true or false
+        end
+    end
 end
 
-local function SetInsetBackdrop(frame)
-    frame:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    frame:SetBackdropColor(0, 0, 0, 0.6)
-    frame:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+local function Print(msg)
+    DEFAULT_CHAT_FRAME:AddMessage(NORMAL_FONT_COLOR_CODE .. "GSD List:|r " .. msg)
 end
 
 --------------------------------------------------------------------------------
@@ -51,6 +70,7 @@ end
 
 function GSD:CreateMainFrame()
     local f = CreateFrame("Frame", "GSDListFrame", UIParent, BACKDROP_TEMPLATE)
+    f:Hide()
     f:SetSize(db.width, db.height)
     f:SetFrameStrata("DIALOG")
     f:SetToplevel(true)
@@ -70,21 +90,9 @@ function GSD:CreateMainFrame()
         self:StopMovingOrSizing()
         GSD:SavePosition()
     end)
-    f:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 32,
-        insets = { left = 11, right = 12, top = 12, bottom = 11 },
-    })
-    f:Hide()
+    f:SetBackdrop(DIALOG_BACKDROP)
     tinsert(UISpecialFrames, "GSDListFrame") -- close with Escape
-
-    f:SetScript("OnShow", function() PlaySound(SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_OPEN or 839) end)
-    f:SetScript("OnHide", function()
-        PlaySound(SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_CLOSE or 840)
-        GSD.notesEdit:ClearFocus()
-        GSD.todoInput:ClearFocus()
-    end)
+    self.frame = f
 
     -- Header banner + title
     local header = f:CreateTexture(nil, "ARTWORK")
@@ -121,9 +129,7 @@ function GSD:CreateMainFrame()
     local toggle = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
     toggle:SetSize(24, 24)
     toggle:SetPoint("BOTTOMLEFT", 16, 14)
-    local toggleText = toggle:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    toggleText:SetPoint("LEFT", toggle, "RIGHT", 2, 1)
-    toggleText:SetText("Enable To-Do List")
+    toggle.Text:SetText("Enable To-Do List")
     toggle:SetScript("OnClick", function(self)
         GSD:SetTodoEnabled(self:GetChecked() and true or false)
     end)
@@ -143,10 +149,21 @@ function GSD:CreateMainFrame()
         GSD:SavePosition()
     end)
 
-    self.frame = f
     self:CreateNotesPage()
     self:CreateTodoPage()
     self:RestorePosition()
+
+    f:SetScript("OnShow", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_OPEN) end)
+    f:SetScript("OnHide", function()
+        PlaySound(SOUNDKIT.IG_CHARACTER_INFO_CLOSE)
+        GSD.notesEdit:ClearFocus() -- also saves the notes
+        GSD.todoInput:ClearFocus()
+    end)
+
+    self.todoToggle:SetChecked(db.todoEnabled)
+    self.tabs.todo:SetShown(db.todoEnabled)
+    self:RefreshTodos()
+    self:SelectTab(db.activeTab)
 end
 
 function GSD:SavePosition()
@@ -165,8 +182,9 @@ function GSD:RestorePosition()
 end
 
 function GSD:SelectTab(key)
-    if key == "todo" and not db.todoEnabled then key = "notes" end
+    if key ~= "todo" or not db.todoEnabled then key = "notes" end
     db.activeTab = key
+    if not self.frame then return end
     self.notesPage:SetShown(key == "notes")
     self.todoPage:SetShown(key == "todo")
     for k, b in pairs(self.tabs) do
@@ -177,12 +195,15 @@ end
 
 function GSD:SetTodoEnabled(enabled)
     db.todoEnabled = enabled
-    self.todoToggle:SetChecked(enabled)
-    self.tabs.todo:SetShown(enabled)
+    if self.frame then
+        self.todoToggle:SetChecked(enabled)
+        self.tabs.todo:SetShown(enabled)
+    end
     self:SelectTab(enabled and db.activeTab or "notes")
 end
 
 function GSD:Toggle(tab)
+    if not self.frame then self:CreateMainFrame() end
     local f = self.frame
     if f:IsShown() and (not tab or tab == db.activeTab) then
         f:Hide()
@@ -198,11 +219,17 @@ end
 
 local function MakeScrollArea(parent, name)
     local inset = CreateFrame("Frame", nil, parent, BACKDROP_TEMPLATE)
-    SetInsetBackdrop(inset)
+    inset:SetBackdrop(INSET_BACKDROP)
+    inset:SetBackdropColor(0, 0, 0, 0.6)
+    inset:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
     local scroll = CreateFrame("ScrollFrame", name, inset, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 8, -8)
     scroll:SetPoint("BOTTOMRIGHT", -28, 8)
     return inset, scroll
+end
+
+local function NotesOnUpdate(self, elapsed)
+    ScrollingEdit_OnUpdate(self, elapsed, self:GetParent())
 end
 
 function GSD:CreateNotesPage()
@@ -217,26 +244,25 @@ function GSD:CreateNotesPage()
     edit:SetAutoFocus(false)
     edit:SetFontObject(ChatFontNormal)
     edit:SetTextInsets(2, 2, 2, 2)
-    edit:SetWidth(200)
-    edit:SetText(db.notes or "")
+    edit:SetWidth(max(scroll:GetWidth(), 100))
+    edit:SetText(db.notes)
     edit:SetCursorPosition(0)
     scroll:SetScrollChild(edit)
-
     scroll:HookScript("OnSizeChanged", function(_, w) edit:SetWidth(w) end)
+
     -- Clicking anywhere in the box (below the last line) focuses the editor
     inset:EnableMouse(true)
     inset:SetScript("OnMouseDown", function() edit:SetFocus() end)
 
     edit:SetScript("OnEscapePressed", edit.ClearFocus)
-    edit:SetScript("OnTextChanged", function(self, userInput)
-        if ScrollingEdit_OnTextChanged then ScrollingEdit_OnTextChanged(self, scroll) end
-        if userInput then db.notes = self:GetText() end
-    end)
+    edit:SetScript("OnTextChanged", function(self) ScrollingEdit_OnTextChanged(self, scroll) end)
     edit:SetScript("OnCursorChanged", ScrollingEdit_OnCursorChanged)
-    edit:SetScript("OnUpdate", function(self, elapsed)
-        if ScrollingEdit_OnUpdate then ScrollingEdit_OnUpdate(self, elapsed, scroll) end
+    -- Keep the cursor in view only while typing; no per-frame work otherwise
+    edit:SetScript("OnEditFocusGained", function(self) self:SetScript("OnUpdate", NotesOnUpdate) end)
+    edit:SetScript("OnEditFocusLost", function(self)
+        self:SetScript("OnUpdate", nil)
+        db.notes = self:GetText()
     end)
-    edit:SetScript("OnEditFocusLost", function(self) db.notes = self:GetText() end)
 
     self.notesPage = page
     self.notesEdit = edit
@@ -246,15 +272,19 @@ end
 -- To-Do page
 --------------------------------------------------------------------------------
 
-local function MakeIconButton(parent, prefix, size)
+local function MakeIconButton(parent, prefix, size, highlight)
     local b = CreateFrame("Button", nil, parent)
     b:SetSize(size, size)
     b:SetNormalTexture(prefix .. "-Up")
     b:SetPushedTexture(prefix .. "-Down")
     b:SetDisabledTexture(prefix .. "-Disabled")
-    b:SetHighlightTexture(prefix == "Interface\\Buttons\\UI-Panel-MinimizeButton"
-        and prefix .. "-Highlight" or "Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    b:SetHighlightTexture(highlight or "Interface\\Buttons\\ButtonHilight-Square", "ADD")
     return b
+end
+
+local function SubmitTodo(input)
+    GSD:AddTodo(input:GetText())
+    input:SetText("")
 end
 
 function GSD:CreateTodoPage()
@@ -266,11 +296,8 @@ function GSD:CreateTodoPage()
     input:SetPoint("TOPLEFT", 6, -2)
     input:SetPoint("TOPRIGHT", -72, -2)
     input:SetAutoFocus(false)
-    input:SetMaxLetters(200)
-    input:SetScript("OnEnterPressed", function(self)
-        GSD:AddTodo(self:GetText())
-        self:SetText("")
-    end)
+    input:SetMaxLetters(MAX_TODO_LETTERS)
+    input:SetScript("OnEnterPressed", SubmitTodo)
     input:SetScript("OnEscapePressed", input.ClearFocus)
 
     local add = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
@@ -278,8 +305,7 @@ function GSD:CreateTodoPage()
     add:SetPoint("TOPRIGHT", 0, -1)
     add:SetText("Add")
     add:SetScript("OnClick", function()
-        GSD:AddTodo(input:GetText())
-        input:SetText("")
+        SubmitTodo(input)
         input:SetFocus()
     end)
 
@@ -288,7 +314,7 @@ function GSD:CreateTodoPage()
     inset:SetPoint("BOTTOMRIGHT", 0, 28)
 
     local list = CreateFrame("Frame", nil, scroll)
-    list:SetSize(200, 1)
+    list:SetSize(max(scroll:GetWidth(), 100), 1)
     scroll:SetScrollChild(list)
     scroll:HookScript("OnSizeChanged", function(_, w) list:SetWidth(w) end)
 
@@ -308,6 +334,35 @@ function GSD:CreateTodoPage()
     self.rows = {}
 end
 
+-- Row handlers are shared by every row; each looks up its row via GetParent()
+local function RowOnEnter(row)
+    row.hl:Show()
+    if row.text:IsTruncated() then
+        GameTooltip:SetOwner(row, "ANCHOR_TOPLEFT")
+        GameTooltip:SetText(row.text:GetText(), 1, 1, 1, 1, true)
+        GameTooltip:Show()
+    end
+end
+
+local function RowOnLeave(row)
+    row.hl:Hide()
+    if GameTooltip:IsOwned(row) then GameTooltip:Hide() end
+end
+
+local function CheckOnClick(check)
+    local item = db.todos[check:GetParent().index]
+    if item then item.done = check:GetChecked() and true or false end
+    GSD:RefreshTodos()
+end
+
+local function DeleteOnClick(button)
+    tremove(db.todos, button:GetParent().index)
+    GSD:RefreshTodos()
+end
+
+local function UpOnClick(button) GSD:MoveTodo(button:GetParent().index, -1) end
+local function DownOnClick(button) GSD:MoveTodo(button:GetParent().index, 1) end
+
 function GSD:GetRow(i)
     local row = self.rows[i]
     if row then return row end
@@ -317,6 +372,8 @@ function GSD:GetRow(i)
     row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_HEIGHT)
     row:SetPoint("RIGHT")
     row:EnableMouse(true)
+    row:SetScript("OnEnter", RowOnEnter)
+    row:SetScript("OnLeave", RowOnLeave)
 
     local hl = row:CreateTexture(nil, "BACKGROUND")
     hl:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
@@ -328,26 +385,20 @@ function GSD:GetRow(i)
     local check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
     check:SetSize(22, 22)
     check:SetPoint("LEFT", 0, 0)
-    check:SetScript("OnClick", function(self)
-        local item = db.todos[row.index]
-        if item then item.done = self:GetChecked() and true or false end
-        GSD:RefreshTodos()
-    end)
+    check:SetScript("OnClick", CheckOnClick)
 
-    local del = MakeIconButton(row, "Interface\\Buttons\\UI-Panel-MinimizeButton", 22)
+    local del = MakeIconButton(row, "Interface\\Buttons\\UI-Panel-MinimizeButton", 22,
+        "Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
     del:SetPoint("RIGHT", 0, 0)
-    del:SetScript("OnClick", function()
-        tremove(db.todos, row.index)
-        GSD:RefreshTodos()
-    end)
+    del:SetScript("OnClick", DeleteOnClick)
 
     local down = MakeIconButton(row, "Interface\\ChatFrame\\UI-ChatIcon-ScrollDown", 20)
     down:SetPoint("RIGHT", del, "LEFT", 2, 0)
-    down:SetScript("OnClick", function() GSD:MoveTodo(row.index, 1) end)
+    down:SetScript("OnClick", DownOnClick)
 
     local up = MakeIconButton(row, "Interface\\ChatFrame\\UI-ChatIcon-ScrollUp", 20)
     up:SetPoint("RIGHT", down, "LEFT", 2, 0)
-    up:SetScript("OnClick", function() GSD:MoveTodo(row.index, -1) end)
+    up:SetScript("OnClick", UpOnClick)
 
     local text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     text:SetPoint("LEFT", check, "RIGHT", 2, 0)
@@ -355,28 +406,17 @@ function GSD:GetRow(i)
     text:SetJustifyH("LEFT")
     text:SetWordWrap(false)
 
-    -- Full text in a tooltip, useful when a long entry is truncated
-    row:SetScript("OnEnter", function(self)
-        hl:Show()
-        GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
-        GameTooltip:SetText(text:GetText(), 1, 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
-    row:SetScript("OnLeave", function()
-        hl:Hide()
-        GameTooltip:Hide()
-    end)
-
-    row.check, row.text, row.up, row.down = check, text, up, down
+    row.hl, row.check, row.text, row.up, row.down = hl, check, text, up, down
     self.rows[i] = row
     return row
 end
 
 function GSD:RefreshTodos()
+    if not self.frame then return end
     local todos = db.todos
-    local done = 0
-    for i, item in ipairs(todos) do
-        local row = self:GetRow(i)
+    local n, done = #todos, 0
+    for i = 1, n do
+        local item, row = todos[i], self:GetRow(i)
         row.index = i
         row.text:SetText(item.text)
         row.check:SetChecked(item.done)
@@ -387,17 +427,17 @@ function GSD:RefreshTodos()
             row.text:SetTextColor(HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b)
         end
         row.up:SetEnabled(i > 1)
-        row.down:SetEnabled(i < #todos)
+        row.down:SetEnabled(i < n)
         row:Show()
     end
-    for i = #todos + 1, #self.rows do
+    for i = n + 1, #self.rows do
         self.rows[i]:Hide()
     end
-    self.todoList:SetHeight(math.max(1, #todos * ROW_HEIGHT))
-    if #todos == 0 then
+    self.todoList:SetHeight(max(1, n * ROW_HEIGHT))
+    if n == 0 then
         self.todoCount:SetText("Nothing to do!")
     else
-        self.todoCount:SetFormattedText("%d / %d done", done, #todos)
+        self.todoCount:SetFormattedText("%d / %d done", done, n)
     end
 end
 
@@ -409,16 +449,16 @@ function GSD:AddTodo(text)
 end
 
 function GSD:MoveTodo(index, delta)
-    local target = index + delta
-    local todos = db.todos
+    local todos, target = db.todos, index + delta
     if target < 1 or target > #todos then return end
     todos[index], todos[target] = todos[target], todos[index]
     self:RefreshTodos()
 end
 
 function GSD:ClearCompleted()
-    for i = #db.todos, 1, -1 do
-        if db.todos[i].done then tremove(db.todos, i) end
+    local todos = db.todos
+    for i = #todos, 1, -1 do
+        if todos[i].done then tremove(todos, i) end
     end
     self:RefreshTodos()
 end
@@ -428,10 +468,18 @@ end
 --------------------------------------------------------------------------------
 
 function GSD:UpdateMinimapPosition()
-    local angle = math.rad(db.minimap.angle or 200)
+    local angle = rad(db.minimap.angle)
     local radius = (Minimap:GetWidth() / 2) + 10
     self.minimapButton:ClearAllPoints()
-    self.minimapButton:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
+    self.minimapButton:SetPoint("CENTER", Minimap, "CENTER", cos(angle) * radius, sin(angle) * radius)
+end
+
+local function MinimapOnDragUpdate()
+    local mx, my = Minimap:GetCenter()
+    local px, py = GetCursorPosition()
+    local scale = Minimap:GetEffectiveScale()
+    db.minimap.angle = deg(atan2(py / scale - my, px / scale - mx))
+    GSD:UpdateMinimapPosition()
 end
 
 function GSD:CreateMinimapButton()
@@ -460,21 +508,15 @@ function GSD:CreateMinimapButton()
     border:SetPoint("TOPLEFT")
 
     b:SetScript("OnClick", function(_, button)
-        if button == "RightButton" and db.todoEnabled then
-            GSD:Toggle("todo")
+        if button == "RightButton" then
+            GSD:Toggle(db.todoEnabled and "todo" or "notes")
         else
-            GSD:Toggle(button == "RightButton" and "notes" or nil)
+            GSD:Toggle()
         end
     end)
 
     b:SetScript("OnDragStart", function(self)
-        self:SetScript("OnUpdate", function()
-            local mx, my = Minimap:GetCenter()
-            local px, py = GetCursorPosition()
-            local scale = Minimap:GetEffectiveScale()
-            db.minimap.angle = math.deg(math.atan2(py / scale - my, px / scale - mx))
-            GSD:UpdateMinimapPosition()
-        end)
+        self:SetScript("OnUpdate", MinimapOnDragUpdate)
         GameTooltip:Hide()
     end)
     b:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
@@ -497,18 +539,26 @@ function GSD:CreateMinimapButton()
 end
 
 --------------------------------------------------------------------------------
--- Shift-click item/quest/spell links into the notepad while it has focus
+-- Shift-click item/quest/spell links into GSD List while one of its boxes has
+-- focus. Current clients route links through ChatFrameUtil.InsertLink; older
+-- ones through the ChatEdit_InsertLink global.
 --------------------------------------------------------------------------------
 
+local function OnInsertLink(link)
+    if not link or not GSD.frame or not GSD.frame:IsShown() then return end
+    if GSD.notesEdit:HasFocus() then
+        GSD.notesEdit:Insert(link)
+    elseif GSD.todoInput:HasFocus() then
+        GSD.todoInput:Insert(link)
+    end
+end
+
 local function HookLinks()
-    if not ChatEdit_InsertLink then return end
-    hooksecurefunc("ChatEdit_InsertLink", function(link)
-        if link and GSD.notesEdit and GSD.notesEdit:HasFocus() then
-            GSD.notesEdit:Insert(link)
-        elseif link and GSD.todoInput and GSD.todoInput:HasFocus() then
-            GSD.todoInput:Insert(link)
-        end
-    end)
+    if ChatFrameUtil and ChatFrameUtil.InsertLink then
+        hooksecurefunc(ChatFrameUtil, "InsertLink", OnInsertLink)
+    elseif ChatEdit_InsertLink then
+        hooksecurefunc("ChatEdit_InsertLink", OnInsertLink)
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -530,8 +580,10 @@ SlashCmdList.GSDLIST = function(msg)
         Print("Minimap button " .. (db.minimap.hide and "hidden." or "shown."))
     elseif msg == "reset" then
         db.point, db.width, db.height = nil, DEFAULTS.width, DEFAULTS.height
-        GSD.frame:SetSize(db.width, db.height)
-        GSD:RestorePosition()
+        if GSD.frame then
+            GSD.frame:SetSize(db.width, db.height)
+            GSD:RestorePosition()
+        end
         db.minimap.angle = DEFAULTS.minimap.angle
         GSD:UpdateMinimapPosition()
         Print("Window and minimap button positions reset.")
@@ -550,20 +602,22 @@ end
 
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
-loader:RegisterEvent("PLAYER_LOGOUT")
 loader:SetScript("OnEvent", function(self, event, name)
-    if event == "ADDON_LOADED" and name == ADDON_NAME then
-        GSDListDB = GSDListDB or {}
+    if event == "ADDON_LOADED" then
+        if name ~= ADDON_NAME then return end
+        if type(GSDListDB) ~= "table" then GSDListDB = {} end
         db = GSDListDB
         CopyDefaults(DEFAULTS, db)
+        if type(db.notes) ~= "string" then db.notes = "" end
+        if type(db.minimap.angle) ~= "number" then db.minimap.angle = DEFAULTS.minimap.angle end
+        SanitizeTodos(db.todos)
 
-        GSD:CreateMainFrame()
         GSD:CreateMinimapButton()
-        GSD:RefreshTodos()
-        GSD:SetTodoEnabled(db.todoEnabled)
         HookLinks()
         self:UnregisterEvent("ADDON_LOADED")
+        self:RegisterEvent("PLAYER_LOGOUT")
     elseif event == "PLAYER_LOGOUT" and GSD.notesEdit then
+        -- Notes still being typed (box focused) at /reload or logout
         db.notes = GSD.notesEdit:GetText()
     end
 end)
