@@ -100,3 +100,13 @@ They cover data capture, merging pages, history and compaction, deal and depth l
 - Not tracked: sale rate (needs TSM's desktop app data) and bid-only auctions.
 - Random-suffix items ("of the Bear") are tracked per suffix, so each needs its own history.
 - If you start a different search while a full scan is still being read, that full scan is saved as partial.
+
+## Still to check in the real game
+
+The tests use a mock client, so these details are written from the TBC Classic / Classic Era API but haven't been confirmed in-game yet:
+
+- The `## Interface:` number in the `.toc` file (20504/20505).
+- The return order of `GetAuctionItemInfo` (item ID as the 17th value), and the exact-match argument of `QueryAuctionItems` (8th).
+- Map IDs used to detect the neutral AH: 1446 Tanaris, 1434 Stranglethorn, 1452 Winterspring.
+- Auctionator's `MultiSearchExact` API. If it's missing, row clicks fall back to the default Browse search.
+- The layout itself. Sizes and positions were checked by hand but not looked at on screen.
