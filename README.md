@@ -9,7 +9,7 @@ popups, so it looks like the stock UI. It has no libraries or external files.
 
 ### Install
 
-1. Download `release/GSDList-v2.0.0.zip`.
+1. Download `release/GSDList-v2.1.0.zip`.
 2. Extract it into your AddOns folder so that you end up with:
 
 ```
@@ -97,15 +97,41 @@ Notes and tasks are shared by every character on the account (`SavedVariables: G
 ### Development
 
 ```
-lua5.1 tests/run_tests.lua   # 47 functional tests against a mocked WoW API
-luacheck GSDList tests       # lint (config in .luacheckrc)
+lua5.1 tests/run_tests.lua      # 54 functional tests against a mocked WoW API
+lua5.1 tests/layout_tests.lua   # interface layout checks across sizes, text sizes and states
+lua5.1 tests/fuzz_tests.lua     # 300 random action sequences with consistency checks
+luacheck GSDList tests          # lint (config in .luacheckrc)
 ```
 
+`tests/mock_wow.lua` is the shared mock client. It includes a small anchor-layout engine,
+so the layout tests can check that controls stay inside the window, don't overlap, and
+leave usable space from 200 x 150 up to 900 x 900.
+
 The templates, functions, menus, popups and textures it uses were checked against
-Blizzard's 2.5.5 and 2.5.6 (TBC Anniversary) UI source.
+Blizzard's 2.5.5 and 2.5.6 (TBC Anniversary) UI source. Every texture path was also
+checked against the game's file list.
 
 ### Changelog
 
+- **2.1.0**
+  - Search no longer matches the hidden parts of item links and colour codes.
+  - Search results refresh if you edit the note while search is open.
+  - Ticking a second task while the confirmation is open no longer leaves the first one ticked.
+  - A corrupted window size or position in the saved data is now reset instead of causing a Lua error.
+  - Layout:
+    - The resize grip no longer covers the to-do list's scroll-down arrow.
+    - The close and undo buttons no longer overlap.
+    - The empty-list hint no longer runs under the scrollbar.
+    - The to-do tab fits 3-digit counts (shown as "99+").
+  - Look:
+    - The undo button uses the game's gold arrow instead of an icon on a black square.
+    - The lock icon is centred and stays lit while locked.
+    - The selected tab has white text.
+    - Empty pages show a hint.
+  - Speed:
+    - Search is about 3x faster with many pages (cached per page).
+    - Adding a task is about 3x faster with many tasks (only changed rows update).
+    - Page switching uses a lookup instead of a scan.
 - **2.0.0**
   - Added nested note pages with ◀ ▶ arrows and a page menu.
   - Added search across all notes.

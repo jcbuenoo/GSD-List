@@ -130,7 +130,14 @@ local function LoadDatabase()
     db.notes = nil
     CopyDefaults(DEFAULTS, db)
     if type(db.minimap.angle) ~= "number" then db.minimap.angle = DEFAULTS.minimap.angle end
-    if type(db.textSize) ~= "number" then db.textSize = DEFAULTS.textSize end
+    if type(db.textSize) ~= "number" or db.textSize < 8 or db.textSize > 20 then db.textSize = DEFAULTS.textSize end
+    if type(db.width) ~= "number" then db.width = DEFAULTS.width end
+    if type(db.height) ~= "number" then db.height = DEFAULTS.height end
+    local point = db.point
+    if point ~= nil and (type(point) ~= "table" or type(point[1]) ~= "string" or type(point[2]) ~= "string"
+        or type(point[3]) ~= "number" or type(point[4]) ~= "number") then
+        db.point = nil
+    end
     if type(db.nextPageId) ~= "number" then db.nextPageId = 1 end
     SanitizeTodos(db.todos)
 
@@ -149,18 +156,20 @@ end
 -- Note pages (a tree; navigation walks it depth-first)
 --------------------------------------------------------------------------------
 
--- Depth-first list of every page: { page, depth, siblings, index }
+-- Depth-first list of every page: { page, depth, siblings, index }, plus an
+-- id -> position lookup. Both are rebuilt only after the tree changes.
 function GSD:GetFlatPages()
     if self.flat then return self.flat end
-    local flat = {}
+    local flat, positions = {}, {}
     local function Walk(list, depth)
         for i, page in ipairs(list) do
             flat[#flat + 1] = { page = page, depth = depth, siblings = list, index = i }
+            positions[page.id] = #flat
             Walk(page.children, depth + 1)
         end
     end
     Walk(db.pages, 0)
-    self.flat = flat
+    self.flat, self.pagePositions = flat, positions
     return flat
 end
 
@@ -169,9 +178,9 @@ function GSD:PagesChanged()
 end
 
 function GSD:FindPage(id)
-    for pos, entry in ipairs(self:GetFlatPages()) do
-        if entry.page.id == id then return entry, pos end
-    end
+    local flat = self:GetFlatPages()
+    local pos = self.pagePositions[id]
+    if pos then return flat[pos], pos end
 end
 
 function GSD:CurrentPage()
@@ -422,7 +431,7 @@ local function MakeScrollArea(parent, name)
     inset:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
     local scroll = CreateFrame("ScrollFrame", name, inset, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 4, -4)
-    scroll:SetPoint("BOTTOMRIGHT", -25, 4)
+    scroll:SetPoint("BOTTOMRIGHT", -27, 4) -- room for the scroll bar inside the border
     return inset, scroll
 end
 
@@ -490,12 +499,14 @@ function GSD:CreateMainFrame()
 
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     close:SetSize(24, 24)
-    close:SetPoint("TOPRIGHT", -2, -2)
+    close:SetPoint("TOPRIGHT", -2, -1)
 
     local lock = IconButton(f, "Interface\\LFGFrame\\UI-LFG-ICON-LOCK", 14, function()
         return db.locked and "Unlock window" or "Lock window (stops moving and resizing)"
     end)
-    lock:SetPoint("RIGHT", close, "LEFT", 0, 0)
+    lock:SetSize(11, 14)
+    lock:GetNormalTexture():SetTexCoord(0, 22 / 32, 0, 27 / 32) -- the padlock fills only the top-left of its file
+    lock:SetPoint("RIGHT", close, "LEFT", -1, 0)
     lock:SetScript("OnClick", function() GSD:SetLocked(not db.locked) end)
     self.lockButton = lock
 
@@ -507,30 +518,32 @@ function GSD:CreateMainFrame()
     self.tabs = {}
     self.tabs.notes = SmallButton(f, "Notes", 50)
     self.tabs.notes:SetPoint("TOPLEFT", 8, -25)
-    self.tabs.todo = SmallButton(f, "To-Do", 66)
+    self.tabs.todo = SmallButton(f, "To-Do", 72)
     self.tabs.todo:SetPoint("LEFT", self.tabs.notes, "RIGHT", 2, 0)
     for key, tab in pairs(self.tabs) do
         tab:SetScript("OnClick", function() GSD:SelectTab(key) end)
     end
 
-    local undo = IconButton(f, "Interface\\PaperDollInfoFrame\\UI-GearManager-Undo", 18, function()
+    -- The game's refresh arrow, mirrored so it turns anticlockwise like an undo arrow
+    local undo = IconButton(f, "Interface\\Buttons\\UI-RefreshButton", 16, function()
         local action = GSD.undo[#GSD.undo]
         return action and ("Undo " .. action.label) or "Nothing to undo"
     end)
-    undo:SetPoint("TOPRIGHT", -9, -25)
+    undo:GetNormalTexture():SetTexCoord(1, 0, 0, 1)
+    undo:SetPoint("TOPRIGHT", -10, -26)
     undo:SetScript("OnClick", function() GSD:Undo() end)
     self.undoButton = undo
 
     -- Content area shared by both pages
     local content = CreateFrame("Frame", nil, f)
     content:SetPoint("TOPLEFT", 8, -45)
-    content:SetPoint("BOTTOMRIGHT", -8, 8)
+    content:SetPoint("BOTTOMRIGHT", -8, 10)
     self.content = content
 
-    -- Resize grip, sitting on the bottom-right corner of the border
+    -- Resize grip, on the bottom-right corner of the border, clear of the scroll arrows
     local grip = CreateFrame("Button", nil, f)
-    grip:SetSize(12, 12)
-    grip:SetPoint("BOTTOMRIGHT", -4, 4)
+    grip:SetSize(10, 10)
+    grip:SetPoint("BOTTOMRIGHT", -3, 3)
     grip:SetFrameLevel(content:GetFrameLevel() + 10)
     grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
@@ -594,8 +607,11 @@ function GSD:SetLocked(locked)
     db.locked = locked
     if not self.frame then return end
     self.grip:SetShown(not locked)
-    self.lockButton:GetNormalTexture():SetDesaturated(not locked)
-    self.lockButton:SetAlpha(locked and 1 or 0.5)
+    -- The padlock art is dark, so the locked state also keeps its highlight lit
+    local lock = self.lockButton
+    lock:GetNormalTexture():SetDesaturated(not locked)
+    lock:SetAlpha(locked and 1 or 0.6)
+    if locked then lock:LockHighlight() else lock:UnlockHighlight() end
 end
 
 function GSD:SelectTab(key)
@@ -604,8 +620,15 @@ function GSD:SelectTab(key)
     if not self.frame then return end
     self.notesPage:SetShown(key == "notes")
     self.todoPage:SetShown(key == "todo")
+    -- The selected tab stays lit and gets white text, like the game's own tabs
     for k, b in pairs(self.tabs) do
-        if k == key then b:LockHighlight() else b:UnlockHighlight() end
+        if k == key then
+            b:LockHighlight()
+            b:SetNormalFontObject(GameFontHighlightSmall)
+        else
+            b:UnlockHighlight()
+            b:SetNormalFontObject(GameFontNormalSmall)
+        end
     end
     if key == "notes" then
         self.todoInput:ClearFocus()
@@ -768,6 +791,7 @@ function GSD:CreateNotesPage()
     matchCount:SetPoint("RIGHT", closeSearch, "LEFT", -2, 0)
     local searchBox = CreateFrame("EditBox", "GSDListSearchBox", searchRow, "SearchBoxTemplate")
     searchBox:SetHeight(18)
+    searchBox:SetFontObject(ChatFontSmall)
     searchBox:SetPoint("LEFT", 6, 0)
     searchBox:SetPoint("RIGHT", matchCount, "LEFT", -4, 0)
     searchBox:HookScript("OnTextChanged", function() GSD:RunSearch() end)
@@ -775,6 +799,8 @@ function GSD:CreateNotesPage()
         GSD:GoToMatch(GSD.matchIndex + (IsShiftKeyDown() and -1 or 1))
     end)
     searchBox:SetScript("OnEscapePressed", function() GSD:CloseSearch(true) end)
+    -- The note may have been edited while the search box was unfocused
+    searchBox:HookScript("OnEditFocusGained", function() GSD:RunSearch() end)
 
     local inset, scroll = MakeScrollArea(page, "GSDListNotesScroll")
     inset:SetPoint("TOPLEFT", 0, -20)
@@ -794,13 +820,28 @@ function GSD:CreateNotesPage()
     inset:EnableMouse(true)
     inset:SetScript("OnMouseDown", function() edit:SetFocus() end)
 
+    -- Shown on an empty page until you start typing
+    local hint = scroll:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    hint:SetPoint("TOPLEFT", 4, -4)
+    hint:SetPoint("RIGHT", -4, 0)
+    hint:SetJustifyH("LEFT")
+    hint:SetText("Click here to write.\nClick the page title above to add or nest pages.")
+    local function UpdateHint(self) hint:SetShown(not self:HasFocus() and self:GetText() == "") end
+
     edit:SetScript("OnEscapePressed", edit.ClearFocus)
-    edit:SetScript("OnTextChanged", function(self) ScrollingEdit_OnTextChanged(self, scroll) end)
+    edit:SetScript("OnTextChanged", function(self)
+        ScrollingEdit_OnTextChanged(self, scroll)
+        UpdateHint(self)
+    end)
     edit:SetScript("OnCursorChanged", ScrollingEdit_OnCursorChanged)
-    edit:SetScript("OnEditFocusGained", function(self) self:SetScript("OnUpdate", NotesOnUpdate) end)
+    edit:SetScript("OnEditFocusGained", function(self)
+        self:SetScript("OnUpdate", NotesOnUpdate)
+        hint:Hide()
+    end)
     edit:SetScript("OnEditFocusLost", function(self)
         self:SetScript("OnUpdate", nil)
         GSD:SaveNotes()
+        UpdateHint(self)
     end)
 
     self.notesPage = page
@@ -822,8 +863,7 @@ function GSD:OpenSearch(query)
     self.searchRow:Show()
     self.searching = true
     if query then self.searchBox:SetText(query) end
-    self.searchBox:SetFocus()
-    self:RunSearch()
+    if self.searchBox:HasFocus() then self:RunSearch() else self.searchBox:SetFocus() end
 end
 
 -- land: put the cursor on the current match so you can start editing there
@@ -843,6 +883,23 @@ function GSD:CloseSearch(land)
     end
 end
 
+-- Lower-cased copy of a page's text with the hidden parts of links and colour
+-- codes blanked out (same length, so match positions still line up). Cached
+-- per page until its text changes.
+local searchCache = setmetatable({}, { __mode = "k" })
+
+local function Blank(code) return strrep("\0", #code) end
+
+local function SearchableText(page)
+    local cached = searchCache[page]
+    if cached and cached.source == page.text then return cached.text end
+    local text = page.text:gsub("|H.-|h", Blank):gsub("|h", Blank)
+        :gsub("|c%x%x%x%x%x%x%x%x", Blank):gsub("|r", Blank)
+    text = strlower(text)
+    searchCache[page] = { source = page.text, text = text }
+    return text
+end
+
 function GSD:RunSearch()
     if not self.searching then return end
     self:SaveNotes()
@@ -851,7 +908,7 @@ function GSD:RunSearch()
     if query ~= "" then
         local _, currentPos = self:CurrentPage()
         for pos, entry in ipairs(self:GetFlatPages()) do
-            local text, init = strlower(entry.page.text), 1
+            local text, init = SearchableText(entry.page), 1
             while #matches < MAX_MATCHES do
                 local s, e = strfind(text, query, init, true)
                 if not s then break end
@@ -929,9 +986,10 @@ function GSD:CreateTodoPage()
     marker:SetHeight(2)
     marker:Hide()
 
-    local empty = inset:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    empty:SetPoint("TOPLEFT", 8, -8)
-    empty:SetPoint("RIGHT", -8, 0)
+    local empty = scroll:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    empty:SetPoint("TOPLEFT", 4, -4)
+    empty:SetPoint("RIGHT", -4, 0)
+    empty:SetJustifyH("LEFT")
     empty:SetText("No tasks. Type one above and press Enter.\nDrag tasks to reorder them.")
 
     self.todoPage = page
@@ -957,9 +1015,9 @@ end
 local function RowOnEnter(row)
     if GSD.dragItem then return end
     row.hl:Show()
-    if row.text:IsTruncated() then
+    if row.label:IsTruncated() then
         GameTooltip:SetOwner(row, "ANCHOR_TOPLEFT")
-        GameTooltip:SetText(row.text:GetText(), 1, 1, 1, 1, true)
+        GameTooltip:SetText(row.label:GetText(), 1, 1, 1, 1, true)
         GameTooltip:Show()
     end
 end
@@ -975,11 +1033,22 @@ local function CheckOnClick(check)
     if not item then return end
     if not check:GetChecked() then
         item.done = false
+        if GSD.pendingItem == item then -- unticked while the popup was asking about it
+            GSD.pendingItem = nil
+            StaticPopup_Hide("GSDLIST_CONFIRM")
+        end
         GSD:RefreshTodos()
     elseif db.confirmComplete then
+        -- Showing the popup again replaces any earlier question, so only one
+        -- task is ever waiting on it
+        GSD.pendingItem = item
+        GSD:RefreshTodos()
+        local function ClearPending()
+            if GSD.pendingItem == item then GSD.pendingItem = nil end
+        end
         StaticPopup_Show("GSDLIST_CONFIRM", "Mark this task as complete?\n\n" .. item.text, nil, {
-            onAccept = function() GSD:CompleteTodo(item) end,
-            onCancel = function() GSD:RefreshTodos() end,
+            onAccept = function() ClearPending(); GSD:CompleteTodo(item) end,
+            onCancel = function() ClearPending(); GSD:RefreshTodos() end,
         })
     else
         -- Stays visible briefly so the click registers and can be undone by unticking
@@ -1111,7 +1180,7 @@ function GSD:GetRow(i)
     text:SetJustifyH("LEFT")
     text:SetWordWrap(false)
 
-    row.hl, row.check, row.delete, row.text = hl, check, del, text
+    row.hl, row.check, row.delete, row.label = hl, check, del, text
     self:LayoutRow(row, i)
     self.rows[i] = row
     return row
@@ -1123,15 +1192,18 @@ function GSD:RefreshTodos()
     local n = #todos
     for i = 1, n do
         local item, row = todos[i], self:GetRow(i)
-        row.index = i
-        row.text:SetText(item.text)
-        row.check:SetChecked(item.done)
-        if item.done then
-            row.text:SetTextColor(GRAY_FONT_COLOR.r, GRAY_FONT_COLOR.g, GRAY_FONT_COLOR.b)
-        else
-            row.text:SetTextColor(HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b)
+        local ticked = item.done or item == self.pendingItem
+        -- Only redraw text for rows whose task or state changed since the last
+        -- refresh. The checkbox is always re-synced: clicking it flips it first.
+        if row.item ~= item or row.shownText ~= item.text or row.shownDone ~= item.done or not row:IsShown() then
+            row.item, row.shownText, row.shownDone = item, item.text, item.done
+            row.label:SetText(item.text)
+            local color = item.done and GRAY_FONT_COLOR or HIGHLIGHT_FONT_COLOR
+            row.label:SetTextColor(color.r, color.g, color.b)
+            row:Show()
         end
-        row:Show()
+        row.check:SetChecked(ticked)
+        row.index = i
     end
     for i = n + 1, #self.rows do
         self.rows[i]:Hide()
@@ -1140,7 +1212,7 @@ function GSD:RefreshTodos()
     if self.dragRow and self.dragRow.index > n then self:EndDrag(false) end
     self.todoList:SetHeight(max(1, n * self.rowHeight))
     self.todoEmpty:SetShown(n == 0)
-    self.tabs.todo:SetText(n > 0 and ("To-Do (" .. n .. ")") or "To-Do")
+    self.tabs.todo:SetText(n == 0 and "To-Do" or n > 99 and "To-Do (99+)" or ("To-Do (" .. n .. ")"))
 end
 
 function GSD:AddTodo(text)

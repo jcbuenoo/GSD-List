@@ -2,233 +2,10 @@
 -- Runs the addon against a mocked WoW API: lua5.1 tests/run_tests.lua
 -- It checks logic and wiring, not rendering, so it does not replace an in-game check.
 
-local ADDON_FILE = arg[1] or "GSDList/GSDList.lua"
-
---------------------------------------------------------------------------------
--- Mock WoW API
---------------------------------------------------------------------------------
-
-local created, focused
-local Widget = {}
-Widget.__index = function(self, k)
-    local m = Widget[k]
-    if m then return m end
-    -- Methods we don't model are no-ops; they still have to be called with ':'
-    if type(k) == "string" and k:match("^%u") then
-        return function(s) assert(type(s) == "table", "method " .. k .. " called with '.'") end
-    end
-end
-
-local function NewWidget(kind, name, parent)
-    local w = setmetatable({ kind = kind, name = name, parent = parent, scripts = {},
-        shown = true, text = "", checked = false, enabled = true, w = 300, h = 300, points = {} }, Widget)
-    created[#created + 1] = w
-    if name then _G[name] = w end
-    return w
-end
-
-function Widget:SetScript(n, f) self.scripts[n] = f end
-function Widget:GetScript(n) return self.scripts[n] end
-function Widget:HookScript(n, f)
-    local old = self.scripts[n]
-    self.scripts[n] = old and function(...) old(...); f(...) end or f
-end
-function Widget:Fire(n, ...) local f = self.scripts[n]; if f then return f(self, ...) end end
-function Widget:GetParent() return self.parent end
-function Widget:SetText(t) self.text = t; self:Fire("OnTextChanged", false) end
-function Widget:GetText() return self.text end
-function Widget:SetFormattedText(f, ...) self.text = f:format(...) end
-function Widget:Insert(t) self.text = self.text .. t; self:Fire("OnTextChanged", true) end
-function Widget:SetCursorPosition(p) self.cursor = p end
-function Widget:HighlightText(s, e) self.highlight = { s, e } end
-function Widget:SetChecked(v) self.checked = v and true or false end
-function Widget:GetChecked() return self.checked end
-function Widget:SetEnabled(v) self.enabled = v and true or false end
-function Widget:Enable() self.enabled = true end
-function Widget:Disable() self.enabled = false end
-function Widget:IsEnabled() return self.enabled end
-function Widget:Show() if not self.shown then self.shown = true; self:Fire("OnShow") end end
-function Widget:Hide() if self.shown then self.shown = false; self:Fire("OnHide") end end
-function Widget:SetShown(v) if v then self:Show() else self:Hide() end end
-function Widget:IsShown() return self.shown end
-function Widget:IsVisible()
-    local w = self
-    while w do if not w.shown then return false end; w = w.parent end
-    return true
-end
-function Widget:SetFocus()
-    if focused == self then return end
-    if focused then focused:ClearFocus() end
-    focused = self; self:Fire("OnEditFocusGained")
-end
-function Widget:ClearFocus() if focused == self then focused = nil; self:Fire("OnEditFocusLost") end end
-function Widget:HasFocus() return focused == self end
-function Widget:SetSize(w, h) self.w, self.h = w, h end
-function Widget:SetWidth(w) self.w = w end
-function Widget:SetHeight(h) self.h = h end
-function Widget:GetWidth() return self.w end
-function Widget:GetHeight() return self.h end
-function Widget:GetSize() return self.w, self.h end
-function Widget:SetPoint(...) self.points[#self.points + 1] = { ... } end
-function Widget:ClearAllPoints() self.points = {} end
-function Widget:GetPoint() return "TOPLEFT", UIParent, "BOTTOMLEFT", 123, 456 end
-function Widget:GetCenter() return 100, 100 end
-function Widget:GetTop() return self.top or 500 end
-function Widget:GetBottom() return self.bottom or 100 end
-function Widget:SetAlpha(a) self.alpha = a end
-function Widget:GetVerticalScroll() return self.vscroll or 0 end
-function Widget:SetVerticalScroll(v) self.vscroll = v end
-function Widget:GetVerticalScrollRange() return self.range or 0 end
-function Widget:GetEffectiveScale() return 1 end
-function Widget:GetFrameLevel() return self.level or 1 end
-function Widget:SetFrameLevel(l) self.level = l end
-function Widget:CreateTexture() return NewWidget("Texture", nil, self) end
-function Widget:CreateFontString() return NewWidget("FontString", nil, self) end
-function Widget:GetStringWidth() return #self.text * 5 end
-function Widget:IsTruncated() return #self.text > 20 end
-function Widget:SetResizeBounds(...) self.bounds = { ... } end
-function Widget:StartMoving() self.moving = true end
-function Widget:StartSizing() self.sizing = true end
-function Widget:StopMovingOrSizing() self.moving, self.sizing = false, false end
-function Widget:IsOwned(o) return self.owner == o end
-function Widget:SetOwner(o) self.owner = o; self.lines = {} end
-function Widget:AddLine(t) self.lines[#self.lines + 1] = t end
-function Widget:SetNormalTexture(t) self.normal = NewWidget("Texture", nil, self); self.normal.file = t end
-function Widget:GetNormalTexture() return self.normal end
-function Widget:SetDesaturated(v) self.desaturated = v end
-function Widget:SetFont(file, size, flags) self.font = { file, size, flags } end
-function Widget:GetFont() return "Fonts\\FRIZQT__.TTF", 12, "" end
-
-function CreateFrame(kind, name, parent, template)
-    local w = NewWidget(kind, name, parent)
-    w.template = template
-    if template == "UICheckButtonTemplate" then w.Text = NewWidget("FontString", nil, w) end
-    return w
-end
-
--- Menu system (MenuUtil) mock: records the generated elements so tests can click them
-local function NewMenuNode(text, kind, a, b, data)
-    local node = { text = text, kind = kind, a = a, b = b, data = data, enabled = true, children = {} }
-    local function add(t, k, x, y, d)
-        local child = NewMenuNode(t, k, x, y, d)
-        node.children[#node.children + 1] = child
-        return child
-    end
-    function node:CreateTitle(t) return add(t, "title") end
-    function node:CreateDivider() return add("-", "divider") end
-    function node:CreateButton(t, cb, d) return add(t, "button", cb, nil, d) end
-    function node:CreateCheckbox(t, isSel, setSel, d) return add(t, "checkbox", isSel, setSel, d) end
-    function node:CreateRadio(t, isSel, setSel, d) return add(t, "radio", isSel, setSel, d) end
-    function node:SetEnabled(v) self.enabled = v end
-    function node:SetScrollMode(h) self.scroll = h end
-    return node
-end
-
-local function ResetEnvironment()
-    created, focused = {}, nil
-    for _, n in ipairs({ "GSDListDB", "GSDListFrame", "GSDListMinimapButton", "GSDListTodoInput",
-        "GSDListNotesScroll", "GSDListTodoScroll", "GSDListSearchBox", "SLASH_GSDLIST1", "SLASH_GSDLIST2" }) do
-        _G[n] = nil
-    end
-    UIParent = NewWidget("Frame", "UIParent")
-    Minimap = NewWidget("Frame", "Minimap"); Minimap.w = 140
-    GameTooltip = NewWidget("GameTooltip", "GameTooltip")
-    UISpecialFrames, SlashCmdList, StaticPopupDialogs = {}, {}, {}
-    ChatFontNormal, ChatFontSmall = NewWidget("Font"), NewWidget("Font")
-    GameFontHighlight, GameFontNormalSmall = NewWidget("Font"), NewWidget("Font")
-    GameFontHighlightSmall, GameFontDisableSmall = NewWidget("Font"), NewWidget("Font")
-    CreateFont = function(name) return NewWidget("Font", name) end
-    SOUNDKIT = { IG_CHARACTER_INFO_OPEN = 839, IG_CHARACTER_INFO_CLOSE = 840 }
-    BackdropTemplateMixin = {}
-    chatLog = {}
-    DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) chatLog[#chatLog + 1] = m end }
-    -- Mirrors the 2.5.6 client: links go through ChatFrameUtil.InsertLink,
-    -- and ChatEdit_InsertLink is only a deprecated alias.
-    ChatFrameUtil = { InsertLink = function() return false end }
-    ChatEdit_InsertLink = ChatFrameUtil.InsertLink
-    -- Same behaviour as Blizzard's helpers, including the arithmetic on
-    -- cursorOffset that errors if ScrollingEdit_SetCursorOffsets was never called.
-    ScrollingEdit_SetCursorOffsets = function(edit, offset, height)
-        edit.cursorOffset, edit.cursorHeight = offset, height
-    end
-    ScrollingEdit_OnCursorChanged = function(edit, _, y, _, h)
-        edit.cursorOffset, edit.cursorHeight = y, h
-        edit.handleCursorChange = true
-    end
-    ScrollingEdit_OnUpdate = function(edit)
-        if edit.handleCursorChange then
-            local _ = -edit.cursorOffset + edit.cursorHeight
-            edit.handleCursorChange = false
-        end
-    end
-    ScrollingEdit_OnTextChanged = function(edit, scroll)
-        edit.handleCursorChange = true
-        ScrollingEdit_OnUpdate(edit, 0, scroll)
-    end
-    cursorX, cursorY = 150, 100
-    timers = {}
-    C_Timer = { After = function(delay, fn) timers[#timers + 1] = { delay = delay, fn = fn } end }
-    shiftDown = false
-    IsShiftKeyDown = function() return shiftDown end
-    popups = {}
-    StaticPopup_Show = function(which, text1, _, data)
-        local info = assert(StaticPopupDialogs[which], "unknown popup " .. tostring(which))
-        local dialog = NewWidget("Frame", nil, UIParent)
-        local editBox = info.hasEditBox and NewWidget("EditBox", nil, dialog)
-        if editBox then editBox.template = "popup" end
-        function dialog:GetEditBox() return editBox end
-        local popup = { which = which, text = info.text:format(text1), data = data, editBox = editBox }
-        function popup.accept(input)
-            if editBox and input then editBox.text = input end
-            info.OnAccept(dialog, data)
-        end
-        function popup.cancel() if info.OnCancel then info.OnCancel(dialog, data, "clicked") end end
-        function popup.enter(input) editBox.text = input; info.EditBoxOnEnterPressed(editBox, data) end
-        if info.OnShow then info.OnShow(dialog, data) end
-        popups[#popups + 1] = popup
-        return dialog
-    end
-    menus = {}
-    MenuResponse = { Close = 1, Refresh = 2 }
-    MenuUtil = { CreateContextMenu = function(owner, generator)
-        local root = NewMenuNode("root", "root")
-        generator(owner, root)
-        menus[#menus + 1] = root
-    end }
-end
-
-PlaySound = function() end
-GetCursorPosition = function() return cursorX, cursorY end
-NORMAL_FONT_COLOR_CODE = "|cffffd100"
-GRAY_FONT_COLOR = { r = 0.5, g = 0.5, b = 0.5 }
-HIGHLIGHT_FONT_COLOR = { r = 1, g = 1, b = 1 }
-YES, NO, ACCEPT, CANCEL = "Yes", "No", "Accept", "Cancel"
-tinsert, tremove = table.insert, table.remove
-strtrim = function(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
-hooksecurefunc = function(tbl, key, hook)
-    if type(tbl) == "string" then tbl, key, hook = _G, tbl, key end
-    local orig = tbl[key]
-    tbl[key] = function(...) local r = { orig(...) }; hook(...); return unpack(r) end
-end
-
--- Strict globals: reading an undefined global is an error (catches typos)
-local KNOWN_NIL = { GSDListDB = true, ChatFrameUtil = true, ChatEdit_InsertLink = true }
-setmetatable(_G, { __index = function(_, k)
-    if KNOWN_NIL[k] then return nil end
-    error("read of undefined global '" .. tostring(k) .. "'", 2)
-end })
-
-local function Load(savedVariables)
-    ResetEnvironment()
-    GSDListDB = savedVariables
-    local chunk = assert(loadfile(ADDON_FILE))
-    chunk("GSDList", {})
-    local loader = created[#created]
-    loader:Fire("OnEvent", "ADDON_LOADED", "SomeOtherAddon")
-    assert(GSDListDB == savedVariables, "reacted to another addon's ADDON_LOADED")
-    loader:Fire("OnEvent", "ADDON_LOADED", "GSDList")
-    return loader
-end
+local TESTS_DIR = (arg[0]:match("^(.*)[/\\]") or ".")
+local mock = dofile(TESTS_DIR .. "/mock_wow.lua")
+mock.addonFile = arg[1] or "GSDList/GSDList.lua"
+local Load = mock.Load
 
 --------------------------------------------------------------------------------
 -- Test runner and helpers
@@ -248,13 +25,13 @@ local function Slash(msg) SlashCmdList.GSDLIST(msg) end
 local function Open() if not (rawget(_G, "GSDListFrame") and GSDListFrame.shown) then Slash("") end end
 local function Input() return GSDListTodoInput end
 local function AddViaInput(text) Input():SetText(text); Input():Fire("OnEnterPressed") end
-local function Find(pred) for _, w in ipairs(created) do if pred(w) then return w end end end
+local function Find(pred) for _, w in ipairs(mock.created()) do if pred(w) then return w end end end
 local function Row(i)
     return Find(function(w) return w.kind == "Frame" and w.index == i and w.shown end)
 end
 local function RowButtons(row)
     local check, buttons = nil, {}
-    for _, w in ipairs(created) do
+    for _, w in ipairs(mock.created()) do
         if w.parent == row then
             if w.kind == "CheckButton" then check = w elseif w.kind == "Button" then buttons[#buttons + 1] = w end
         end
@@ -317,7 +94,7 @@ local function NewPageVia(item, name)
 end
 local function PrevArrow() return IconButton("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up") end
 local function NextArrow() return IconButton("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up") end
-local function UndoButton() return IconButton("Interface\\PaperDollInfoFrame\\UI-GearManager-Undo") end
+local function UndoButton() return IconButton("Interface\\Buttons\\UI-RefreshButton") end
 local function LockButton() return IconButton("Interface\\LFGFrame\\UI-LFG-ICON-LOCK") end
 local function SearchFor(text)
     IconButton("Interface\\Common\\UI-Searchbox-Icon"):Fire("OnClick")
@@ -356,7 +133,7 @@ test("window is built lazily (only the minimap button exists at login)", functio
     eq(rawget(_G, "GSDListFrame"), nil, "main frame")
     assert(GSDListMinimapButton, "minimap button missing")
     local frames = 0
-    for _, w in ipairs(created) do
+    for _, w in ipairs(mock.created()) do
         if (w.kind == "Frame" or w.kind == "Button") and w ~= UIParent and w ~= Minimap then frames = frames + 1 end
     end
     eq(frames, 2, "frames at login (minimap button + event frame)")
@@ -385,6 +162,15 @@ test("corrupted saved variables are repaired", function()
     eq(GSDListDB.minimap.angle, 200); eq(GSDListDB.textSize, 12)
     Open()
     eq(GSDListDB.activeTab, "notes")
+end)
+
+test("corrupted window size and position are reset instead of erroring", function()
+    Load({ width = "wide", height = {}, point = { "CENTER", nil, 5 }, textSize = 500 })
+    Open()
+    eq(GSDListFrame.w, 300); eq(GSDListFrame.h, 340); eq(GSDListDB.point, nil); eq(GSDListDB.textSize, 12)
+    Load({ point = "TOPLEFT" }); Open(); eq(GSDListDB.point, nil)
+    Load({ point = { "TOPLEFT", "BOTTOMLEFT", 10, 20 } }); Open()
+    eq(GSDListDB.point[3], 10, "valid position dropped")
 end)
 
 test("/gsd toggles the window, Escape is registered", function()
@@ -481,6 +267,26 @@ test("typing in notes does not hit Blizzard's nil cursorOffset error", function(
     local edit = Notes()
     edit:SetFocus(); edit:Insert(" world"); edit:Fire("OnUpdate", 0.016)
     eq(edit:GetText(), "hello world")
+end)
+
+test("empty pages show a hint until you type", function()
+    Load(nil)
+    Open()
+    local hint = Find(function(w) return w.kind == "FontString" and w.text:find("Click here to write") end)
+    eq(hint.shown, true, "hint on an empty page")
+    Notes():SetFocus(); eq(hint.shown, false, "hint while typing")
+    Notes():Insert("x"); Notes():ClearFocus(); eq(hint.shown, false, "hint over text")
+    NewPageVia("New page", "Blank"); eq(hint.shown, true, "hint on a new page")
+    PrevArrow():Fire("OnClick"); eq(hint.shown, false, "hint on a page with text")
+end)
+
+test("the selected tab gets white text", function()
+    Load(nil)
+    Open()
+    local notesTab, todoTab = Button("Notes"), Button("To-Do")
+    eq(notesTab.normalFont, GameFontHighlightSmall); eq(todoTab.normalFont, GameFontNormalSmall)
+    todoTab:Fire("OnClick")
+    eq(notesTab.normalFont, GameFontNormalSmall); eq(todoTab.normalFont, GameFontHighlightSmall)
 end)
 
 test("add pages and nested sub-notes from the page menu", function()
@@ -636,9 +442,32 @@ test("search scrolls only briefly; no per-frame work when idle", function()
     assert(edit.scripts.OnUpdate, "no scroll-to-match update")
     for _ = 1, 10 do if edit.scripts.OnUpdate then edit:Fire("OnUpdate", 0.016) end end
     eq(edit.scripts.OnUpdate, nil, "OnUpdate left running after search")
-    for _, w in ipairs(created) do
+    for _, w in ipairs(mock.created()) do
         eq(w.scripts.OnUpdate, nil, "stray OnUpdate on " .. tostring(w.name or w.kind))
     end
+end)
+
+test("search ignores the hidden parts of item links and colour codes", function()
+    local link = "|cff0070dd|Hitem:21877::::::::70:::::|h[Netherweave Cloth]|h|r"
+    Load({ pages = { { id = 1, title = "A", text = "Farm " .. link, children = {} } } })
+    Open()
+    SearchFor("cff"); assert(MatchCount():find("0/0"), "matched a colour code")
+    SearchFor("item"); assert(MatchCount():find("0/0"), "matched link data")
+    SearchFor("70"); assert(MatchCount():find("0/0"), "matched link data")
+    SearchFor("netherweave"); eq(MatchCount(), "1/1")
+    local text = GSDListDB.pages[1].text
+    local s = text:find("Netherweave", 1, true)
+    eq(Notes().highlight[1], s - 1, "highlight start"); eq(Notes().highlight[2], s + 10, "highlight end")
+end)
+
+test("search re-reads a page after it is edited", function()
+    Load({ pages = { { id = 1, title = "A", text = "alpha", children = {} } } })
+    Open()
+    SearchFor("beta"); assert(MatchCount():find("0/0"))
+    Notes():SetFocus(); Notes().text = "alpha beta"   -- type in the note while search is open
+    GSDListSearchBox:SetFocus()                       -- click back into the search box
+    eq(MatchCount(), "1/1", "stale matches after editing")
+    eq(Notes().highlight[1], 6)
 end)
 
 test("/gsd search opens the window with the query", function()
@@ -670,6 +499,31 @@ test("ticking asks for confirmation by default", function()
     eq(Texts(GSDListDB), "a,b"); eq(RowButtons(Row(1)).checked, false, "checkbox left ticked after No")
     Tick(1); LastPopup().accept()
     eq(Texts(GSDListDB), "b"); eq(#timers, 0)
+end)
+
+test("only one task waits on the confirmation popup at a time", function()
+    Load(nil)
+    Open()
+    AddViaInput("a"); AddViaInput("b")
+    Tick(1)
+    eq(RowButtons(Row(1)).checked, true, "first task not shown ticked while asking")
+    Tick(2)
+    eq(RowButtons(Row(1)).checked, false, "first task left ticked after a second question")
+    eq(RowButtons(Row(2)).checked, true)
+    LastPopup().cancel()
+    eq(RowButtons(Row(2)).checked, false)
+    Tick(2); LastPopup().accept()
+    eq(Texts(GSDListDB), "a"); eq(RowButtons(Row(1)).checked, false)
+end)
+
+test("unticking a task while its confirmation is open closes the popup", function()
+    Load(nil)
+    Open()
+    AddViaInput("a")
+    Tick(1); eq(RowButtons(Row(1)).checked, true)
+    Tick(1)
+    eq(RowButtons(Row(1)).checked, false, "still shown ticked"); eq(hiddenPopups[1], "GSDLIST_CONFIRM")
+    eq(Texts(GSDListDB), "a")
 end)
 
 test("confirming a task that was deleted meanwhile does nothing", function()
@@ -882,14 +736,14 @@ test("shift-click links go into the focused GSD box", function()
 end)
 
 test("falls back to ChatEdit_InsertLink on clients without ChatFrameUtil", function()
-    local origReset = ResetEnvironment
-    ResetEnvironment = function() origReset(); ChatFrameUtil = nil end
+    local origReset = mock.ResetEnvironment
+    mock.ResetEnvironment = function() origReset(); ChatFrameUtil = nil end
     local ok, err = pcall(function()
         Load(nil)
         Open(); Notes():SetFocus(); ChatEdit_InsertLink("[link]")
         eq(Notes():GetText(), "[link]")
     end)
-    ResetEnvironment = origReset
+    mock.ResetEnvironment = origReset
     assert(ok, err)
 end)
 
@@ -897,11 +751,11 @@ test("stress: 500 tasks and 200 pages", function()
     Load({ confirmComplete = false })
     Open()
     for i = 1, 500 do AddViaInput("task " .. i) end
-    local before = #created
+    local before = #mock.created()
     Drag(500, 0); eq(GSDListDB.todos[1].text, "task 500")
     for i = 1, 500 do Tick(i) end
     for _, t in ipairs(timers) do t.fn() end
-    eq(#GSDListDB.todos, 0); eq(#created, before, "widgets created after the first fill")
+    eq(#GSDListDB.todos, 0); eq(#mock.created(), before, "widgets created after the first fill")
     for i = 1, 200 do NewPageVia("New page", "p" .. i) end
     eq(PageMenu().scroll, 400, "long page menu does not scroll")
     for _ = 1, 200 do PrevArrow():Fire("OnClick") end

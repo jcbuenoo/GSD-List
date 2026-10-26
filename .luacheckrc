@@ -8,7 +8,7 @@ files["GSDList/"] = {
         "ACCEPT", "BackdropTemplateMixin", "C_Timer", "CANCEL", "ChatEdit_InsertLink", "ChatFontNormal", "ChatFontSmall",
         "ChatFrameUtil", "CreateFont", "CreateFrame", "GameFontDisableSmall", "GameFontHighlight",
         "GameFontHighlightSmall", "GameFontNormalSmall", "IsShiftKeyDown", "MenuResponse", "MenuUtil", "NO",
-        "ScrollingEdit_SetCursorOffsets", "StaticPopup_Show", "YES",
+        "ScrollingEdit_SetCursorOffsets", "StaticPopup_Hide", "StaticPopup_Show", "YES",
         "DEFAULT_CHAT_FRAME", "GameTooltip", "GetCursorPosition", "GRAY_FONT_COLOR", "HIGHLIGHT_FONT_COLOR",
         "hooksecurefunc", "Minimap", "NORMAL_FONT_COLOR_CODE", "PlaySound", "ScrollingEdit_OnCursorChanged",
         "ScrollingEdit_OnTextChanged", "ScrollingEdit_OnUpdate", "SOUNDKIT", "strlower", "strtrim", "tinsert",
