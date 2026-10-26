@@ -1,0 +1,9 @@
+## Interface: 20506, 20505
+## Title: GSD DR Tracker
+## Notes: Diminishing returns bar for enemy players (Sap, rogue stuns, and every other TBC DR category).
+## Author: GSD
+## Version: 1.0.0
+## SavedVariables: GSD_DRTrackerDB
+
+Data.lua
+Core.lua
