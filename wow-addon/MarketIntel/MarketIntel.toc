@@ -1,0 +1,15 @@
+## Interface: 20504, 20505
+## Title: Market Intel
+## Notes: Auction house price history, deal alerts and market depth warnings. Works alongside Auctionator and TSM.
+## Author: jcbuenoo
+## Version: 1.0.0
+## SavedVariables: MarketIntelDB
+## OptionalDeps: Auctionator, TradeSkillMaster
+
+Core.lua
+History.lua
+Analysis.lua
+Integrations.lua
+Scanner.lua
+Tooltip.lua
+UI.lua
