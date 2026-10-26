@@ -1,0 +1,9 @@
+## Interface: 20506, 20505
+## Title: GSD List
+## Notes: Lightweight notepad with an optional to-do list.
+## Author: jcbuenoo
+## Version: 1.0.0
+## SavedVariables: GSDListDB
+## IconTexture: Interface\Icons\INV_Misc_Note_01
+
+GSDList.lua
