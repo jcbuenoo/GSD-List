@@ -71,6 +71,12 @@ function Widget:SetPoint(...) self.points[#self.points + 1] = { ... } end
 function Widget:ClearAllPoints() self.points = {} end
 function Widget:GetPoint() return "TOPLEFT", UIParent, "BOTTOMLEFT", 123, 456 end
 function Widget:GetCenter() return 100, 100 end
+function Widget:GetTop() return self.top or 500 end
+function Widget:GetBottom() return self.bottom or 100 end
+function Widget:SetAlpha(a) self.alpha = a end
+function Widget:GetVerticalScroll() return self.vscroll or 0 end
+function Widget:SetVerticalScroll(v) self.vscroll = v end
+function Widget:GetVerticalScrollRange() return self.range or 0 end
 function Widget:GetEffectiveScale() return 1 end
 function Widget:CreateTexture() return NewWidget("Texture", nil, self) end
 function Widget:CreateFontString() return NewWidget("FontString", nil, self) end
@@ -109,6 +115,15 @@ local function ResetEnvironment()
     ScrollingEdit_OnCursorChanged = function(edit) edit.handleCursorChange = true end
     ScrollingEdit_OnUpdate = function(edit) edit.handleCursorChange = false end
     cursorX, cursorY = 150, 100
+    timers = {}
+    C_Timer = { After = function(delay, fn) timers[#timers + 1] = { delay = delay, fn = fn } end }
+end
+
+local function RunTimers()
+    local due = timers
+    timers = {}
+    for _, t in ipairs(due) do t.fn() end
+    return #due
 end
 
 PlaySound = function() end
@@ -170,7 +185,23 @@ local function RowButtons(row)
             if w.kind == "CheckButton" then check = w elseif w.kind == "Button" then buttons[#buttons + 1] = w end
         end
     end
-    return check, buttons[1], buttons[2], buttons[3] -- check, delete, down, up
+    return check, buttons[1], #buttons -- check, delete, button count
+end
+local function TodoList()
+    for _, w in ipairs(created) do if w.kind == "Frame" and w.parent == GSDListTodoScroll then return w end end
+end
+-- Drag row `from` and drop it with the cursor `offset` pixels below the list top
+local function Drag(from, offset, frames)
+    local row = Row(from)
+    row:Fire("OnDragStart")
+    cursorY = TodoList():GetTop() - offset
+    for _ = 1, frames or 1 do row:Fire("OnUpdate", 0.016) end
+    row:Fire("OnDragStop")
+end
+local function Tick(i)
+    local check = RowButtons(Row(i))
+    check.checked = not check.checked
+    check:Fire("OnClick")
 end
 local function Notes()
     for _, w in ipairs(created) do if w.kind == "EditBox" and w.template == nil then return w end end
@@ -200,9 +231,10 @@ test("window is built lazily (only the minimap button exists at login)", functio
 end)
 
 test("corrupted saved variables are repaired", function()
-    Load({ notes = 42, todos = { "bad", { text = "" }, { text = "keep", done = 1 }, { done = true } },
+    Load({ notes = 42, todos = { "bad", { text = "" }, { text = "keep" }, { done = true },
+        { text = "finished in 1.x", done = true } },
         minimap = { angle = "x" }, activeTab = "bogus" })
-    eq(GSDListDB.notes, ""); eq(#GSDListDB.todos, 1); eq(GSDListDB.todos[1].done, true)
+    eq(GSDListDB.notes, ""); eq(Texts(GSDListDB), "keep"); eq(GSDListDB.todos[1].done, false)
     eq(GSDListDB.minimap.angle, 200)
     Slash("")
     eq(GSDListDB.activeTab, "notes")
@@ -258,34 +290,132 @@ test("adding tasks trims text and rejects empty input", function()
     eq(Input():GetText(), "")
 end)
 
-test("check, counter, colours and clear completed", function()
-    Load(nil)
-    Slash(""); GSDListDB.activeTab = "todo"
-    AddViaInput("a"); AddViaInput("b"); AddViaInput("c")
-    local check = RowButtons(Row(2))
-    check.checked = true; check:Fire("OnClick")
-    eq(GSDListDB.todos[2].done, true)
-    local counter
-    for _, w in ipairs(created) do if w.text == "1 / 3 done" then counter = w end end
-    assert(counter, "counter text not updated")
-    for _, w in ipairs(created) do if w.kind == "Button" and w.text == "Clear Completed" then w:Fire("OnClick") end end
-    eq(Texts(GSDListDB), "a,c"); eq(counter.text, "0 / 2 done")
-    for _, w in ipairs(created) do if w.kind == "Button" and w.text == "Clear Completed" then w:Fire("OnClick") end end
-    eq(Texts(GSDListDB), "a,c")
-end)
-
-test("reorder respects list bounds and arrow states", function()
+test("ticking a task removes it automatically after a short delay", function()
     Load(nil)
     Slash("")
     AddViaInput("a"); AddViaInput("b"); AddViaInput("c")
-    local _, _, down1, up1 = RowButtons(Row(1))
-    eq(up1.enabled, false, "first row up"); eq(down1.enabled, true)
-    local _, _, down3 = RowButtons(Row(3))
-    eq(down3.enabled, false, "last row down")
-    down1:Fire("OnClick"); eq(Texts(GSDListDB), "b,a,c")
-    up1:Fire("OnClick"); eq(Texts(GSDListDB), "b,a,c", "moving the top row up")
-    down3:Fire("OnClick"); eq(Texts(GSDListDB), "b,a,c", "moving the bottom row down")
-    local _, _, _, up3 = RowButtons(Row(3)); up3:Fire("OnClick"); eq(Texts(GSDListDB), "b,c,a")
+    Tick(2)
+    eq(GSDListDB.todos[2].done, true); eq(Texts(GSDListDB), "a,b,c", "removed before the delay")
+    eq(#timers, 1); assert(timers[1].delay > 0 and timers[1].delay < 2, "delay " .. timers[1].delay)
+    RunTimers()
+    eq(Texts(GSDListDB), "a,c")
+end)
+
+test("unticking before the delay keeps the task", function()
+    Load(nil)
+    Slash("")
+    AddViaInput("a"); AddViaInput("b")
+    Tick(1); Tick(1)
+    RunTimers()
+    eq(Texts(GSDListDB), "a,b"); eq(GSDListDB.todos[1].done, false)
+end)
+
+test("auto-clear removes the right task even if the list changed meanwhile", function()
+    Load(nil)
+    Slash("")
+    AddViaInput("a"); AddViaInput("b"); AddViaInput("c")
+    Tick(3)                                        -- tick "c"
+    local _, del = RowButtons(Row(1)); del:Fire("OnClick") -- delete "a" before the timer fires
+    AddViaInput("d")
+    RunTimers()
+    eq(Texts(GSDListDB), "b,d")
+    Tick(1); _, del = RowButtons(Row(1)); del:Fire("OnClick") -- tick then delete "b" by hand
+    RunTimers()
+    eq(Texts(GSDListDB), "d")
+end)
+
+test("rows have no Clear Completed or arrow buttons", function()
+    Load(nil)
+    Slash("")
+    AddViaInput("a")
+    local _, _, count = RowButtons(Row(1))
+    eq(count, 1, "buttons on a row")
+    for _, w in ipairs(created) do
+        assert(w.text ~= "Clear Completed", "Clear Completed button still exists")
+    end
+end)
+
+test("drag a task down, up, to the ends, and onto itself", function()
+    Load(nil)
+    Slash("")
+    for _, t in ipairs({ "a", "b", "c", "d" }) do AddViaInput(t) end
+    Drag(1, 2.6 * 22); eq(Texts(GSDListDB), "b,c,a,d", "drop a between c and d")
+    Drag(4, 0);        eq(Texts(GSDListDB), "d,b,c,a", "drop d at the top")
+    Drag(1, 9999);     eq(Texts(GSDListDB), "b,c,a,d", "drop d past the end")
+    Drag(2, -500);     eq(Texts(GSDListDB), "c,b,a,d", "drop b above the list")
+    Drag(2, 1.2 * 22); eq(Texts(GSDListDB), "c,b,a,d", "drop b onto itself")
+    Drag(2, 1.9 * 22); eq(Texts(GSDListDB), "c,b,a,d", "drop b just below itself")
+end)
+
+test("dragging shows a drop marker and cleans up afterwards", function()
+    Load(nil)
+    Slash("")
+    AddViaInput("a"); AddViaInput("b")
+    local row = Row(1)
+    row:Fire("OnDragStart")
+    eq(row.alpha, 0.5); assert(row.scripts.OnUpdate, "no OnUpdate while dragging")
+    cursorY = TodoList():GetTop() - 44; row:Fire("OnUpdate", 0.016)
+    local marker
+    for _, w in ipairs(created) do if w.kind == "Texture" and w.parent == TodoList() then marker = w end end
+    eq(marker.shown, true); eq(marker.points[1][5], -44, "marker y")
+    row:Fire("OnEnter"); eq(row.hl.shown, false, "hover highlight during drag")
+    row:Fire("OnDragStop")
+    eq(row.alpha, 1); eq(row.scripts.OnUpdate, nil); eq(marker.shown, false)
+    Row(1):Fire("OnEnter"); eq(Row(1).hl.shown, true, "hover works after drag")
+end)
+
+test("dragging past the list edge scrolls it", function()
+    Load(nil)
+    Slash("")
+    for i = 1, 30 do AddViaInput("t" .. i) end
+    local scroll = GSDListTodoScroll
+    scroll.top, scroll.bottom, scroll.range = 400, 200, 300
+    local row = Row(1)
+    row:Fire("OnDragStart")
+    cursorY = 100; for _ = 1, 10 do row:Fire("OnUpdate", 0.1) end
+    eq(scroll.vscroll, 200, "scrolled down")
+    for _ = 1, 10 do row:Fire("OnUpdate", 0.1) end
+    eq(scroll.vscroll, 300, "clamped to range")
+    cursorY = 450; for _ = 1, 40 do row:Fire("OnUpdate", 0.1) end
+    eq(scroll.vscroll, 0, "scrolled back up and clamped at 0")
+    row:Fire("OnDragStop")
+end)
+
+test("closing the window mid-drag cancels the drag", function()
+    Load(nil)
+    Slash("")
+    AddViaInput("a"); AddViaInput("b")
+    local row = Row(1)
+    row:Fire("OnDragStart"); cursorY = TodoList():GetTop() - 999; row:Fire("OnUpdate", 0.016)
+    Slash("")
+    eq(row.scripts.OnUpdate, nil); eq(Texts(GSDListDB), "a,b")
+    row:Fire("OnDragStop"); eq(Texts(GSDListDB), "a,b", "late OnDragStop moved the task")
+end)
+
+test("a task auto-cleared while being dragged does not break dragging", function()
+    Load(nil)
+    Slash("")
+    AddViaInput("a"); AddViaInput("b"); AddViaInput("c")
+    Tick(3)
+    local row = Row(3)
+    row:Fire("OnDragStart")
+    RunTimers() -- "c" is removed mid-drag; its row is hidden
+    eq(Texts(GSDListDB), "a,b"); eq(row.scripts.OnUpdate, nil)
+    Row(1):Fire("OnEnter"); eq(Row(1).hl.shown, true, "hover stuck after cancelled drag")
+    Drag(1, 9999); eq(Texts(GSDListDB), "b,a")
+end)
+
+test("task counter", function()
+    Load(nil)
+    Slash("")
+    local function CounterText()
+        for _, w in ipairs(created) do
+            if w.kind == "FontString" and (w.text:find("task") or w.text == "Nothing to do!") then return w.text end
+        end
+    end
+    eq(CounterText(), "Nothing to do!")
+    AddViaInput("a"); eq(CounterText(), "1 task")
+    AddViaInput("b"); eq(CounterText(), "2 tasks - drag to reorder")
 end)
 
 test("delete removes the right task and rows are reused", function()
@@ -425,15 +555,16 @@ test("closing the window drops focus from both boxes", function()
     eq(Input():HasFocus(), false)
 end)
 
-test("stress: 500 tasks then clear all", function()
+test("stress: 500 tasks, reorder, then complete them all", function()
     Load(nil)
     Slash("")
     for i = 1, 500 do AddViaInput("task " .. i) end
     eq(#GSDListDB.todos, 500)
     local before = #created
-    for i = 1, 500 do GSDListDB.todos[i].done = true end
-    for _, w in ipairs(created) do if w.kind == "Button" and w.text == "Clear Completed" then w:Fire("OnClick") end end
-    eq(#GSDListDB.todos, 0); eq(#created, before)
+    Drag(500, 0); eq(GSDListDB.todos[1].text, "task 500")
+    for i = 1, 500 do Tick(i) end
+    eq(RunTimers(), 500)
+    eq(#GSDListDB.todos, 0); eq(#created, before, "widgets created after the first fill")
     for _, w in ipairs(created) do
         if w.kind == "Frame" and w.index then eq(w.shown, false, "row still shown") end
     end

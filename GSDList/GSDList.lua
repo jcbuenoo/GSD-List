@@ -7,7 +7,8 @@ local ADDON_NAME = ...
 local GSD = {}
 
 local CreateFrame, GameTooltip, tinsert, tremove = CreateFrame, GameTooltip, tinsert, tremove
-local cos, sin, rad, deg, atan2, max = math.cos, math.sin, math.rad, math.deg, math.atan2, math.max
+local cos, sin, rad, deg, atan2 = math.cos, math.sin, math.rad, math.deg, math.atan2
+local min, max, floor = math.min, math.max, math.floor
 
 local DEFAULTS = {
     notes = "",
@@ -22,6 +23,8 @@ local DEFAULTS = {
 local BACKDROP_TEMPLATE = BackdropTemplateMixin and "BackdropTemplate" or nil
 local ROW_HEIGHT = 22
 local MAX_TODO_LETTERS = 255
+local COMPLETE_DELAY = 0.6     -- seconds a ticked task stays visible before it is removed
+local DRAG_SCROLL_SPEED = 200  -- pixels per second while dragging past the list edge
 local db
 
 local DIALOG_BACKDROP = {
@@ -48,14 +51,15 @@ local function CopyDefaults(src, dst)
     end
 end
 
--- Drop malformed entries (e.g. from a hand-edited SavedVariables file)
+-- Drop malformed entries (e.g. from a hand-edited SavedVariables file) and
+-- completed ones, which auto-clear (older versions kept them until cleared)
 local function SanitizeTodos(todos)
     for i = #todos, 1, -1 do
         local item = todos[i]
-        if type(item) ~= "table" or type(item.text) ~= "string" or item.text == "" then
+        if type(item) ~= "table" or type(item.text) ~= "string" or item.text == "" or item.done then
             tremove(todos, i)
         else
-            item.done = item.done and true or false
+            item.done = false
         end
     end
 end
@@ -156,6 +160,7 @@ function GSD:CreateMainFrame()
     f:SetScript("OnShow", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_OPEN) end)
     f:SetScript("OnHide", function()
         PlaySound(SOUNDKIT.IG_CHARACTER_INFO_CLOSE)
+        GSD:EndDrag(false)
         GSD.notesEdit:ClearFocus() -- also saves the notes
         GSD.todoInput:ClearFocus()
     end)
@@ -272,16 +277,6 @@ end
 -- To-Do page
 --------------------------------------------------------------------------------
 
-local function MakeIconButton(parent, prefix, size, highlight)
-    local b = CreateFrame("Button", nil, parent)
-    b:SetSize(size, size)
-    b:SetNormalTexture(prefix .. "-Up")
-    b:SetPushedTexture(prefix .. "-Down")
-    b:SetDisabledTexture(prefix .. "-Disabled")
-    b:SetHighlightTexture(highlight or "Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    return b
-end
-
 local function SubmitTodo(input)
     GSD:AddTodo(input:GetText())
     input:SetText("")
@@ -311,31 +306,49 @@ function GSD:CreateTodoPage()
 
     local inset, scroll = MakeScrollArea(page, "GSDListTodoScroll")
     inset:SetPoint("TOPLEFT", 0, -28)
-    inset:SetPoint("BOTTOMRIGHT", 0, 28)
+    inset:SetPoint("BOTTOMRIGHT", 0, 18)
 
     local list = CreateFrame("Frame", nil, scroll)
     list:SetSize(max(scroll:GetWidth(), 100), 1)
     scroll:SetScrollChild(list)
     scroll:HookScript("OnSizeChanged", function(_, w) list:SetWidth(w) end)
 
-    local clear = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
-    clear:SetSize(120, 22)
-    clear:SetPoint("BOTTOMLEFT", 0, 0)
-    clear:SetText("Clear Completed")
-    clear:SetScript("OnClick", function() GSD:ClearCompleted() end)
+    -- Gold line showing where a dragged task will land
+    local marker = list:CreateTexture(nil, "OVERLAY")
+    marker:SetColorTexture(1, 0.82, 0, 1)
+    marker:SetHeight(2)
+    marker:Hide()
 
     local count = page:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    count:SetPoint("BOTTOMRIGHT", -4, 6)
+    count:SetPoint("BOTTOMLEFT", 4, 2)
 
     self.todoPage = page
     self.todoInput = input
+    self.todoScroll = scroll
     self.todoList = list
+    self.dropMarker = marker
     self.todoCount = count
     self.rows = {}
 end
 
+-- Ticked tasks stay visible briefly so the click registers (and can be undone
+-- by unticking), then disappear on their own.
+local function RemoveIfDone(item)
+    local todos = db.todos
+    for i = 1, #todos do
+        if todos[i] == item then
+            if item.done then
+                tremove(todos, i)
+                GSD:RefreshTodos()
+            end
+            return
+        end
+    end
+end
+
 -- Row handlers are shared by every row; each looks up its row via GetParent()
 local function RowOnEnter(row)
+    if GSD.dragItem then return end
     row.hl:Show()
     if row.text:IsTruncated() then
         GameTooltip:SetOwner(row, "ANCHOR_TOPLEFT")
@@ -345,14 +358,17 @@ local function RowOnEnter(row)
 end
 
 local function RowOnLeave(row)
+    if GSD.dragItem then return end
     row.hl:Hide()
     if GameTooltip:IsOwned(row) then GameTooltip:Hide() end
 end
 
 local function CheckOnClick(check)
     local item = db.todos[check:GetParent().index]
-    if item then item.done = check:GetChecked() and true or false end
+    if not item then return end
+    item.done = check:GetChecked() and true or false
     GSD:RefreshTodos()
+    if item.done then C_Timer.After(COMPLETE_DELAY, function() RemoveIfDone(item) end) end
 end
 
 local function DeleteOnClick(button)
@@ -360,8 +376,73 @@ local function DeleteOnClick(button)
     GSD:RefreshTodos()
 end
 
-local function UpOnClick(button) GSD:MoveTodo(button:GetParent().index, -1) end
-local function DownOnClick(button) GSD:MoveTodo(button:GetParent().index, 1) end
+--------------------------------------------------------------------------------
+-- Drag to reorder. The OnUpdate only exists while a task is being dragged.
+--------------------------------------------------------------------------------
+
+-- Insertion slot (1 .. #todos + 1) under the cursor
+function GSD:GetDropSlot()
+    local list = self.todoList
+    local _, y = GetCursorPosition()
+    local offset = list:GetTop() - y / list:GetEffectiveScale()
+    return min(max(floor(offset / ROW_HEIGHT + 0.5) + 1, 1), #db.todos + 1)
+end
+
+local function DragOnUpdate(_, elapsed)
+    local self, scroll = GSD, GSD.todoScroll
+    -- Scroll the list when the cursor is held above or below it
+    local _, y = GetCursorPosition()
+    y = y / scroll:GetEffectiveScale()
+    local step, current = DRAG_SCROLL_SPEED * elapsed, scroll:GetVerticalScroll()
+    if y > scroll:GetTop() then
+        scroll:SetVerticalScroll(max(current - step, 0))
+    elseif y < scroll:GetBottom() then
+        scroll:SetVerticalScroll(min(current + step, scroll:GetVerticalScrollRange()))
+    end
+    local slot = self:GetDropSlot()
+    self.dropSlot = slot
+    self.dropMarker:ClearAllPoints()
+    self.dropMarker:SetPoint("TOPLEFT", self.todoList, "TOPLEFT", 0, -(slot - 1) * ROW_HEIGHT)
+    self.dropMarker:SetPoint("RIGHT", self.todoList, "RIGHT")
+    self.dropMarker:Show()
+end
+
+local function RowOnDragStart(row)
+    local self = GSD
+    self.dragItem = db.todos[row.index]
+    self.dragRow = row
+    self.dropSlot = row.index
+    row:SetAlpha(0.5)
+    GameTooltip:Hide()
+    row:SetScript("OnUpdate", DragOnUpdate)
+end
+
+function GSD:EndDrag(drop)
+    local item, row = self.dragItem, self.dragRow
+    if not item then return end
+    self.dragItem, self.dragRow = nil, nil
+    row:SetScript("OnUpdate", nil)
+    row:SetAlpha(1)
+    row.hl:Hide()
+    self.dropMarker:Hide()
+    if not drop then return end
+    -- Look the item up again: an auto-clear may have shifted it while dragging
+    local todos = db.todos
+    for from = 1, #todos do
+        if todos[from] == item then
+            local to = min(self.dropSlot, #todos + 1)
+            if to > from then to = to - 1 end
+            if to ~= from then
+                tremove(todos, from)
+                tinsert(todos, to, item)
+            end
+            break
+        end
+    end
+    self:RefreshTodos()
+end
+
+local function RowOnDragStop() GSD:EndDrag(true) end
 
 function GSD:GetRow(i)
     local row = self.rows[i]
@@ -372,8 +453,11 @@ function GSD:GetRow(i)
     row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_HEIGHT)
     row:SetPoint("RIGHT")
     row:EnableMouse(true)
+    row:RegisterForDrag("LeftButton")
     row:SetScript("OnEnter", RowOnEnter)
     row:SetScript("OnLeave", RowOnLeave)
+    row:SetScript("OnDragStart", RowOnDragStart)
+    row:SetScript("OnDragStop", RowOnDragStop)
 
     local hl = row:CreateTexture(nil, "BACKGROUND")
     hl:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
@@ -387,26 +471,21 @@ function GSD:GetRow(i)
     check:SetPoint("LEFT", 0, 0)
     check:SetScript("OnClick", CheckOnClick)
 
-    local del = MakeIconButton(row, "Interface\\Buttons\\UI-Panel-MinimizeButton", 22,
-        "Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
+    local del = CreateFrame("Button", nil, row)
+    del:SetSize(22, 22)
     del:SetPoint("RIGHT", 0, 0)
+    del:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
+    del:SetPushedTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Down")
+    del:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD")
     del:SetScript("OnClick", DeleteOnClick)
-
-    local down = MakeIconButton(row, "Interface\\ChatFrame\\UI-ChatIcon-ScrollDown", 20)
-    down:SetPoint("RIGHT", del, "LEFT", 2, 0)
-    down:SetScript("OnClick", DownOnClick)
-
-    local up = MakeIconButton(row, "Interface\\ChatFrame\\UI-ChatIcon-ScrollUp", 20)
-    up:SetPoint("RIGHT", down, "LEFT", 2, 0)
-    up:SetScript("OnClick", UpOnClick)
 
     local text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     text:SetPoint("LEFT", check, "RIGHT", 2, 0)
-    text:SetPoint("RIGHT", up, "LEFT", -2, 0)
+    text:SetPoint("RIGHT", del, "LEFT", -2, 0)
     text:SetJustifyH("LEFT")
     text:SetWordWrap(false)
 
-    row.hl, row.check, row.text, row.up, row.down = hl, check, text, up, down
+    row.hl, row.check, row.text = hl, check, text
     self.rows[i] = row
     return row
 end
@@ -414,30 +493,31 @@ end
 function GSD:RefreshTodos()
     if not self.frame then return end
     local todos = db.todos
-    local n, done = #todos, 0
+    local n = #todos
     for i = 1, n do
         local item, row = todos[i], self:GetRow(i)
         row.index = i
         row.text:SetText(item.text)
         row.check:SetChecked(item.done)
         if item.done then
-            done = done + 1
             row.text:SetTextColor(GRAY_FONT_COLOR.r, GRAY_FONT_COLOR.g, GRAY_FONT_COLOR.b)
         else
             row.text:SetTextColor(HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b)
         end
-        row.up:SetEnabled(i > 1)
-        row.down:SetEnabled(i < n)
         row:Show()
     end
     for i = n + 1, #self.rows do
         self.rows[i]:Hide()
     end
+    -- A hidden row never gets OnDragStop, so end a drag whose row just went away
+    if self.dragRow and self.dragRow.index > n then self:EndDrag(false) end
     self.todoList:SetHeight(max(1, n * ROW_HEIGHT))
     if n == 0 then
         self.todoCount:SetText("Nothing to do!")
+    elseif n == 1 then
+        self.todoCount:SetText("1 task")
     else
-        self.todoCount:SetFormattedText("%d / %d done", done, n)
+        self.todoCount:SetFormattedText("%d tasks - drag to reorder", n)
     end
 end
 
@@ -445,21 +525,6 @@ function GSD:AddTodo(text)
     text = text and strtrim(text)
     if not text or text == "" then return end
     tinsert(db.todos, { text = text, done = false })
-    self:RefreshTodos()
-end
-
-function GSD:MoveTodo(index, delta)
-    local todos, target = db.todos, index + delta
-    if target < 1 or target > #todos then return end
-    todos[index], todos[target] = todos[target], todos[index]
-    self:RefreshTodos()
-end
-
-function GSD:ClearCompleted()
-    local todos = db.todos
-    for i = #todos, 1, -1 do
-        if todos[i].done then tremove(todos, i) end
-    end
     self:RefreshTodos()
 end
 

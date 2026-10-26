@@ -9,7 +9,7 @@ It has no libraries or external files.
 
 ### Install
 
-1. Download `release/GSDList-v1.1.0.zip`.
+1. Download `release/GSDList-v1.2.0.zip`.
 2. Extract it into your AddOns folder so that you end up with:
 
 ```
@@ -24,7 +24,7 @@ If the AddOns screen says "Out of date", tick **Load out of date AddOns**.
 
 - **Minimap icon**: left-click toggles the notepad, right-click opens the to-do list, drag moves the icon around the minimap.
 - **Notes**: type freely. Notes save when you click away, switch tabs, close the window, `/reload` or log out. Shift-click an item, spell or quest to paste its link.
-- **To-Do**: type a task and press Enter or click **Add**. Tick a task to complete it, use the arrows to reorder, and click the X to delete. **Clear Completed** removes every ticked task. Hover over a long task to see its full text.
+- **To-Do**: type a task and press Enter or click **Add**. Tick a task to complete it; it disappears on its own a moment later (untick it quickly to keep it). **Drag** a task up or down to reorder it; a gold line shows where it will land, and the list scrolls if you drag past its edge. Click the X to delete a task. Hover over a long task to see its full text.
 - Untick **Enable To-Do List** at the bottom to use the window as a notepad only.
 - Drag the window by its border to move it. Drag the bottom-right corner to resize it. Press Escape to close it.
 
@@ -46,11 +46,12 @@ Notes and tasks are shared by every character on the account (`SavedVariables: G
 - Nothing runs every frame. The notepad checks the cursor's scroll position only while you are typing, and the minimap button only while you drag it.
 - Notes save at focus loss, close, `/reload` or logout, not on every keystroke.
 - To-do rows are pooled and reused, and all rows share one set of handlers.
+- Dragging a task runs a per-frame update only while the drag is in progress.
 
 ### Development
 
 ```
-lua5.1 tests/run_tests.lua   # 24 functional tests against a mocked WoW API
+lua5.1 tests/run_tests.lua   # 32 functional tests against a mocked WoW API
 luacheck GSDList tests       # lint (config in .luacheckrc)
 ```
 
@@ -58,6 +59,11 @@ The templates, functions and textures it uses were checked against Blizzard's 2.
 
 ### Changelog
 
+- **1.2.0**
+  - Ticked tasks now clear themselves after 0.6 seconds, so the **Clear Completed** button is gone.
+  - Reorder tasks by dragging; the up/down arrows are gone.
+  - The counter now shows the number of tasks.
+  - Upgrading from 1.x removes tasks that were already ticked.
 - **1.1.0**
   - The window is now built only when first opened.
   - Removed the per-frame update loop.
