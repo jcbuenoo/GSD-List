@@ -2,7 +2,7 @@
 local ADDON, ns = ...
 
 ns.name = ADDON or "MarketIntel"
-ns.version = "1.3.2"
+ns.version = "1.4.0"
 
 local floor, format, tostring, tonumber, type, pairs = math.floor, string.format, tostring, tonumber, type, pairs
 
@@ -32,6 +32,7 @@ ns.DEFAULTS = {
 	strongSound = "raidwarning",
 	minimapHide = false,
 	minimapAngle = 200,
+	windowScale = 100,       -- window size in %, so it fits beside the auction house
 	-- posting advisor
 	postUndercut = 1,        -- copper below the cheapest auction
 	postFloorPct = 85,       -- never suggest posting below this % of the normal price (hold instead)
@@ -412,6 +413,7 @@ local HELP = {
 	"/mi flips | crafting | ledger - open those tabs",
 	"/mi post <item> - suggested posting price",
 	"/mi minimap - show or hide the minimap button",
+	"/mi size <50-125> - window size in % (or drag the window's bottom-right corner)",
 	"/mi bags - market depth check for items in your bags",
 	"/mi stats - how much data is stored",
 	"/mi import - copy Auctionator's price history into Market Intel",
@@ -460,6 +462,13 @@ function ns.HandleSlash(input)
 		if not a then return ns.Print("no price data for %s yet. Search it on the auction house first.", tostring(name)) end
 		ns.Print("%s: %s at %s each (you get %s). %s", name, ns.Advisor.ACTION_TEXT[a.action], ns.FormatMoney(a.price),
 			ns.FormatMoney(a.net), a.reason)
+	elseif cmd == "size" then
+		local pct = tonumber(rest)
+		if not pct then return ns.Print("usage: /mi size <50-125>, e.g. /mi size 75. Now %d%%.", ns.settings.windowScale) end
+		ns.settings.windowScale = math.max(50, math.min(125, math.floor(pct + 0.5)))
+		ns.UI.Show()
+		ns.UI.ApplyScale()
+		ns.Print("window size %d%%.", ns.settings.windowScale)
 	elseif cmd == "minimap" then
 		ns.settings.minimapHide = not ns.settings.minimapHide
 		ns.Minimap.Refresh()

@@ -1531,6 +1531,55 @@ test("UI: window opens beside the auction house and remembers where it was dragg
 	assert(GameTooltip.lines[2] and #GameTooltip.lines[2] > 20, "no setting tooltip")
 end)
 
+test("UI: window resizes by dragging the corner grip, by setting, and by /mi size; size is remembered", function()
+	local ns = load(nil)
+	M.OpenAH()
+	ns.UI.Show("deals")
+	local f = ns.UI.GetFrame()
+	local before = M.Rect(f)
+	local grip = f.grip
+	-- drag the grip 264 pixels left: 880 -> 616 wide = 70%
+	M.cursor = { before.r, before.b }
+	grip:GetScript("OnMouseDown")(grip)
+	M.cursor = { before.r - 264, before.b }
+	grip:GetScript("OnUpdate")(grip)
+	grip:GetScript("OnMouseUp")(grip)
+	eq(ns.settings.windowScale, 70)
+	local after = M.Rect(f)
+	near(after.r - after.l, 616, 0.5, "width")
+	near(after.l, before.l, 0.5, "left edge moved"); near(after.t, before.t, 0.5, "top edge moved")
+	-- limits
+	grip:GetScript("OnMouseDown")(grip)
+	M.cursor = { -5000, 0 }
+	grip:GetScript("OnUpdate")(grip)
+	grip:GetScript("OnMouseUp")(grip)
+	eq(ns.settings.windowScale, 50, "minimum size")
+	-- settings box and slash command
+	ns.UI.Show("settings")
+	local box
+	for _, c in ipairs(ns.UI.GetPage("settings").controls) do if c.def.key == "windowScale" then box = c end end
+	box:SetFocus(); box:SetText("80"); box:ClearFocus()
+	near(M.Rect(f).r - M.Rect(f).l, 704, 0.5, "80% from settings")
+	SlashCmdList.MARKETINTEL("size 75")
+	eq(ns.settings.windowScale, 75)
+	near(M.Rect(f).r - M.Rect(f).l, 660, 0.5, "75% from /mi size")
+	SlashCmdList.MARKETINTEL("size abc")
+	assert(chatHas("usage: /mi size"), "bad size accepted")
+	-- reopening keeps the size and place
+	local r1 = M.Rect(f)
+	ns.UI.Toggle(); ns.UI.Toggle()
+	local r2 = M.Rect(f)
+	near(r2.l, r1.l, 0.5); near(r2.r, r1.r, 0.5)
+	grip:GetScript("OnEnter")(grip)
+	-- a small window placed beside the AH still clears the AH's Market Intel button
+	ns.settings.windowPos = nil
+	SlashCmdList.MARKETINTEL("size 60")
+	ns.UI.Toggle(); ns.UI.Toggle()
+	local r, btn, ah = M.Rect(f), M.Rect(ns.UI.ahButton), M.Rect(AuctionFrame)
+	assert(r.t <= btn.b, "small window covers the Market Intel button")
+	assert(r.l >= ah.r, "small window covers the auction house")
+end)
+
 test("UI: empty states render without data", function()
 	local ns = load(nil)
 	for _, tab in ipairs({ "deals", "snipe", "flips", "depth", "history", "crafting", "ledger", "watch", "settings" }) do ns.UI.Show(tab) end

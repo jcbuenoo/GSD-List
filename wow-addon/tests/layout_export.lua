@@ -119,12 +119,14 @@ local states = {
 	{ "history-empty", function() ns.UI.Show("history"); ns.UI.GetPage("history"):Select(nil) end },
 	{ "watch", function() ns.Scanner.ScanWatchlist() end }, { "settings" },
 	{ "snipe" }, { "flips" }, { "crafting" }, { "ledger" },
+	{ "resized", function() ns.settings.windowPos = nil; ns.settings.windowScale = 70
+		ns.UI.Toggle(); ns.UI.Show("deals") end },
 	{ "export", function() ns.UI.Show("deals"); ns.Scanner.StopScan(true); M.Tick(1)
 		for _, c in ipairs(ns.UI.GetPage("deals")._children) do if c._kind == "Button" and c:GetText() == "CSV" then c:Click() end end end },
 }
 for _, st in ipairs(states) do
 	local tab = st[1]:match("^%a+")
-	if tab ~= "export" then ns.UI.Show(tab) end
+	if tab ~= "export" and tab ~= "resized" then ns.UI.Show(tab) end
 	if ns.Export.GetFrame() then ns.Export.GetFrame():Hide() end
 	if st[2] then st[2]() end
 	ns.UI.Refresh(true)

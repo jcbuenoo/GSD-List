@@ -18,12 +18,17 @@ It never buys, posts or cancels anything: it records prices and makes suggestion
 
 ## Install
 
-1. Download `dist/MarketIntel-1.3.2.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
+1. Download `dist/MarketIntel-1.4.0.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
 2. Restart the game. If the addon shows as "out of date", tick **Load out of date AddOns** on the character-select AddOns screen. To see your client's interface number, run `/dump select(4, GetBuildInfo())`. Then update the `## Interface:` line in `MarketIntel.toc` to match.
 
 **Updating:** exit the game, delete the old `Interface/AddOns/MarketIntel` folder, and unzip the new one in its place. Your price history, ledger, watchlist and settings are kept: they're saved separately in `WTF/Account/<ACCOUNT>/SavedVariables/MarketIntel.lua`.
 
 ## What's new
+
+**1.4.0**: resizable window.
+- **Drag the grip** in the window's bottom-right corner to shrink or grow it, from 50% to 125%, so it fits beside the auction house on smaller screens. The whole window scales, so every tab keeps its layout.
+- **Other ways to set the size:** the *Window size (%)* box in Settings, or `/mi size 75`.
+- **The size is remembered,** and the top-left corner stays put while you resize.
 
 **1.3.2**: fixes found in a real saved-data file from the game.
 - **Item names:** during full scans the game returns an empty name for items it hasn't loaded yet. Those were saved without a name, so the Watchlist and History search couldn't find them. They're now read again until the name arrives.
@@ -174,6 +179,9 @@ When you open your mailbox, auction mail is recorded: sold, won, expired and can
 - **Minimap button:** left-click opens the window, right-click opens Settings, drag moves it. A red number shows alerts since you last opened the window.
 - **CSV export:** every list has a **CSV** button. It opens the data as CSV, ready to copy with Ctrl+C into a spreadsheet.
 
+## Window size
+Drag the grip in the window's bottom-right corner to make the whole window smaller or larger (50% to 125%), for example to keep it open beside the auction house. You can also type a size in Settings (*Window size (%)*) or use `/mi size 75`. The size and position are remembered.
+
 ## Commands
 
 ```
@@ -188,6 +196,7 @@ When you open your mailbox, auction mail is recorded: sold, won, expired and can
 /mi flips | crafting | ledger
 /mi post <item>          suggested posting price
 /mi minimap              show or hide the minimap button
+/mi size <50-125>        window size in % (or drag the bottom-right corner)
 /mi stats | purge | reset
 ```
 

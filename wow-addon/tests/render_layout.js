@@ -143,7 +143,7 @@ function render(items) {
     const name = f.replace(/^layout-|\.json$/g, '');
     await page.screenshot({ path: path.join(dir, `tab-${name}.png`),
       clip: { x: result.win.x - 10, y: result.win.y - 10, width: result.win.w + 140, height: result.win.h + 20 } });
-    if (name === 'deals') await page.screenshot({ path: path.join(dir, 'with-auction-house.png') });
+    if (name === 'deals' || name === 'resized') await page.screenshot({ path: path.join(dir, name + '-full.png') });
     report[name] = result.issues;
   }
   await browser.close();

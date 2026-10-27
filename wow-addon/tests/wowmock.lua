@@ -222,7 +222,8 @@ for m in ([[SetSize SetWidth SetHeight GetWidth GetHeight SetPoint ClearAllPoint
 	SetWordWrap SetTexture SetColorTexture SetHighlightTexture RegisterForClicks SetAutoFocus ClearFocus SetFocus
 	HasFocus SetChecked GetChecked LockHighlight UnlockHighlight GetName GetParent GetChildren Click SetValue GetValue
 	AddLine AddDoubleLine SetOwner SetHyperlink GetItem SetTextColor SetFontObject SetAlpha SetShown GetPoint
-	SetMultiLine HighlightText SetScrollChild SetFrameLevel GetCenter GetEffectiveScale]]):gmatch("%S+") do
+	SetMultiLine HighlightText SetScrollChild SetFrameLevel GetCenter GetEffectiveScale SetScale GetScale GetLeft GetTop
+	SetNormalTexture SetPushedTexture]]):gmatch("%S+") do
 	REAL[m] = true
 end
 M.usedMethods = {}
@@ -383,6 +384,21 @@ function Widget.GetCenter(w)
 	return (r.l + r.r) / 2, (r.b + r.t) / 2
 end
 function Widget.GetEffectiveScale() return 1 end
+function Widget.SetScale(w, v) rawset(w, "_scale", v) end
+function Widget.GetScale(w) return rawget(w, "_scale") or 1 end
+-- positions in the frame's own (scaled) units, as in WoW
+-- effective scale: own scale times every parent's (UIParent counts as 1)
+function M.EffScale(w)
+	local s = 1
+	while w and w ~= M.UIParent do
+		s = s * (rawget(w, "_scale") or 1)
+		w = w._parent
+	end
+	return s
+end
+-- positions in the frame's own (scaled) units, as in WoW
+function Widget.GetLeft(w) local r = M.Rect(w) return r and r.l / M.EffScale(w) end
+function Widget.GetTop(w) local r = M.Rect(w) return r and r.t / M.EffScale(w) end
 function Widget.SetMultiLine(w, v) rawset(w, "_multi", v and true or false) end
 -- WoW places a scroll child at the scroll frame's top left by itself
 function Widget.SetScrollChild(w, child)
@@ -535,23 +551,24 @@ function M.Rect(w, depth)
 	local anchors = rawget(w, "_anchors")
 	if not anchors or not next(anchors) then return nil end -- not placed: not drawn by WoW either
 	local xs, ys = {}, {}
+	local es = M.EffScale(w) -- offsets and sizes are in the frame's own scaled units
 	for point, a in pairs(anchors) do
 		local rel = a.rel or w._parent
 		local rr = M.Rect(rel, depth)
 		if not rr then return nil end
-		local px = rr.l + (rr.r - rr.l) * HX[a.relPoint] + a.x
-		local py = rr.b + (rr.t - rr.b) * VY[a.relPoint] + a.y
+		local px = rr.l + (rr.r - rr.l) * HX[a.relPoint] + a.x * es
+		local py = rr.b + (rr.t - rr.b) * VY[a.relPoint] + a.y * es
 		xs[HX[point]] = px
 		ys[VY[point]] = py
 	end
-	local width, height = w._w, w._h
+	local width, height = (w._w or 0) * es, (w._h or 0) * es
 	if w._kind == "FontString" then
-		if not width or width == 0 then width = TextWidth(w) end
-		if not height or height == 0 then
+		if width == 0 then width = TextWidth(w) * es end
+		if height == 0 then
 			local lines = 1
 			if w._w and w._w > 0 and w._wrap ~= false then lines = math.max(1, math.ceil(TextWidth(w) / w._w)) end
 			local _, breaks = (w._text or ""):gsub("\n", "")
-			height = (lines + breaks) * (M.FontSize(w) + 2)
+			height = (lines + breaks) * (M.FontSize(w) + 2) * es
 		end
 	end
 	local l, r
@@ -588,7 +605,7 @@ function M.ExportLayout(root)
 			if w._text then e[#e + 1] = '"text":' .. JsonString(w._text) end
 			if w._font then e[#e + 1] = '"font":' .. JsonString(w._font) end
 			if w._kind == "FontString" then
-				e[#e + 1] = '"size":' .. M.FontSize(w)
+				e[#e + 1] = '"size":' .. string.format("%.1f", M.FontSize(w) * M.EffScale(w))
 				e[#e + 1] = '"fixedWidth":' .. tostring((w._w or 0) > 0)
 				e[#e + 1] = '"wrap":' .. tostring(w._wrap ~= false)
 				e[#e + 1] = '"justify":' .. JsonString(w._justify or "CENTER")

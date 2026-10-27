@@ -8,6 +8,7 @@ ns.UI = UI
 local floor, max, min, format, ipairs, pairs, tonumber = math.floor, math.max, math.min, string.format, ipairs, pairs, tonumber
 local ROW_H = 18
 local WIDTH, HEIGHT = 880, 500
+local MIN_SCALE, MAX_SCALE = 0.5, 1.25 -- window size limits (the resize grip scales the window)
 local BACKDROP_TEMPLATE = BackdropTemplateMixin and "BackdropTemplate" or nil
 
 local frame
@@ -1089,6 +1090,8 @@ local NUMBER_SETTINGS = {
 		tip = "3 = rare (blue) and epic, 4 = epic only. 2 adds green items." },
 	{ key = "snipeMinSold", label = "Snipe min. region sold/day", lo = 0, hi = 100, decimal = true,
 		tip = "Only snipe items that TSM says sell at least this many a day per auction house in your region." },
+	{ key = "windowScale", label = "Window size (%)", lo = 50, hi = 125,
+		tip = "Shrink the window so it fits beside the auction house. You can also drag the grip in its bottom-right corner, or type /mi size 75." },
 }
 local BOOL_SETTINGS = {
 	{ key = "alertChat", label = "Print alerts in chat" },
@@ -1169,6 +1172,7 @@ local function BuildSettings(page)
 				ns.settings[def.key] = v
 			end
 			self:SetText(FormatSetting(def, ns.settings[def.key]))
+			if def.key == "windowScale" then UI.ApplyScale() end
 			UI.Refresh()
 		end
 		eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
@@ -1188,6 +1192,7 @@ local function BuildSettings(page)
 	Button(page, "Reset defaults", 120, function()
 		for k, v in pairs(ns.DEFAULTS) do ns.settings[k] = v end
 		ns.Minimap.Refresh()
+		UI.ApplyScale()
 		page:Update()
 	end):SetPoint("BOTTOMLEFT", 150, 0)
 	Button(page, "Import from Auctionator", 170, function()
@@ -1254,8 +1259,7 @@ local function CreateMain()
 	frame:SetScript("OnDragStart", frame.StartMoving)
 	frame:SetScript("OnDragStop", function(self)
 		self:StopMovingOrSizing()
-		local point, _, relPoint, x, y = self:GetPoint()
-		ns.settings.windowPos = { point, relPoint, x, y }
+		UI.SavePosition()
 	end)
 	if frame.SetBackdrop then
 		frame:SetBackdrop({
@@ -1288,7 +1292,44 @@ local function CreateMain()
 
 	frame.status = Text(frame, "GameFontHighlightSmall")
 	frame.status:SetPoint("BOTTOMLEFT", 20, 14)
-	frame.status:SetWidth(WIDTH - 40)
+	frame.status:SetWidth(WIDTH - 60)
+	frame.status:SetWordWrap(false)
+
+	-- Resize grip: the whole window scales, so every tab keeps its layout.
+	local grip = CreateFrame("Button", nil, frame)
+	grip:SetSize(16, 16)
+	grip:SetPoint("BOTTOMRIGHT", -8, 8)
+	grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+	grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+	grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+	grip:SetScript("OnMouseDown", function(self)
+		local ui = UIParent:GetEffectiveScale()
+		local scale = frame:GetScale()
+		self.startX = GetCursorPosition() / ui
+		self.startScale = scale
+		self.startLeft, self.startTop = frame:GetLeft() * scale, frame:GetTop() * scale -- in UIParent units
+		self:SetScript("OnUpdate", function()
+			local width = WIDTH * self.startScale + (GetCursorPosition() / ui - self.startX)
+			local new = max(MIN_SCALE, min(MAX_SCALE, width / WIDTH))
+			frame:SetScale(new)
+			frame:ClearAllPoints()
+			frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", self.startLeft / new, self.startTop / new)
+		end)
+	end)
+	grip:SetScript("OnMouseUp", function(self)
+		self:SetScript("OnUpdate", nil)
+		ns.settings.windowScale = floor(frame:GetScale() * 100 + 0.5)
+		UI.SavePosition()
+		if pages.settings and pages.settings:IsShown() then pages.settings:Update() end
+	end)
+	grip:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Drag to resize")
+		GameTooltip:AddLine(format("Window size %d%%. Also: Settings, or /mi size 75.", ns.settings.windowScale), 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	grip:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	frame.grip = grip
 
 	frame:SetScript("OnShow", function()
 		ns.Alerts.ClearUnseen()
@@ -1296,17 +1337,42 @@ local function CreateMain()
 	end)
 end
 
+local function ScaleSetting()
+	return max(MIN_SCALE, min(MAX_SCALE, (ns.settings.windowScale or 100) / 100))
+end
+
+function UI.SavePosition()
+	local point, _, relPoint, x, y = frame:GetPoint()
+	ns.settings.windowPos = { point, relPoint, x, y }
+end
+
+-- Apply the window size setting, keeping the top-left corner where it is.
+function UI.ApplyScale()
+	if not frame then return end
+	local old, new = frame:GetScale(), ScaleSetting()
+	local left, top = frame:GetLeft(), frame:GetTop()
+	frame:SetScale(new)
+	if left and top and frame:IsShown() then
+		frame:ClearAllPoints()
+		frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * old / new, top * old / new)
+		UI.SavePosition()
+	end
+end
+
 -- Saved position if the window was ever moved; otherwise beside the auction
 -- house when it is open (so it does not cover it), else the screen centre.
 function UI.PlaceWindow()
 	if not frame then return end
+	frame:SetScale(ScaleSetting())
 	frame:ClearAllPoints()
 	local pos = ns.settings.windowPos
 	if pos then
 		frame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
 	elseif AuctionFrame and AuctionFrame:IsShown() then
 		-- right of the auction house, below its Market Intel button, clear of the minimap
-		frame:SetPoint("TOPLEFT", AuctionFrame, "TOPRIGHT", 10, -70)
+		-- (offsets are in the window's own scale, so divide to keep the same gap on screen)
+		local scale = ScaleSetting()
+		frame:SetPoint("TOPLEFT", AuctionFrame, "TOPRIGHT", 10 / scale, -70 / scale)
 	else
 		frame:SetPoint("CENTER")
 	end

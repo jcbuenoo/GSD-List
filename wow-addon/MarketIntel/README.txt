@@ -1,4 +1,4 @@
-MARKET INTEL 1.3.2 - auction house helper for WoW TBC Classic
+MARKET INTEL 1.4.0 - auction house helper for WoW TBC Classic
 =============================================================
 
 Works alongside Auctionator and TradeSkillMaster (TSM). It never buys, posts
@@ -27,6 +27,10 @@ GETTING STARTED
 
 Open the window with /mi, the minimap button, or the "Market Intel" button
 next to the auction house.
+
+WINDOW SIZE: drag the grip in the window's bottom-right corner to shrink or
+grow the whole window (50% to 125%), e.g. to keep it beside the auction
+house. Or type a size in Settings, or /mi size 75. The size is remembered.
 
 TABS
 ----
@@ -80,6 +84,7 @@ COMMANDS
 /mi bags               depth check for everything in your bags
 /mi import             copy Auctionator's price history again
 /mi minimap            show or hide the minimap button
+/mi size 75            window size in % (50-125)
 /mi stats | purge | reset | help
 
 GOOD TO KNOW
@@ -99,6 +104,8 @@ GOOD TO KNOW
 
 WHAT'S NEW
 ----------
+1.4.0  Resizable window: drag the bottom-right corner, use Settings, or
+       /mi size 75. Fits beside the auction house on smaller screens.
 1.3.2  Fixed (found in real game data): items saved without a name during
        full scans; recipes filed under profession "UNKNOWN"; ledger names
        keeping the stack size, e.g. "Thorium Widget (2)". Your existing data
