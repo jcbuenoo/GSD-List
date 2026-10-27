@@ -21,6 +21,31 @@ It never buys, posts or cancels anything: it records prices and makes suggestion
 1. Download `dist/MarketIntel-1.3.1.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
 2. Restart the game. If the addon shows as "out of date", tick **Load out of date AddOns** on the character-select AddOns screen. To see your client's interface number, run `/dump select(4, GetBuildInfo())`. Then update the `## Interface:` line in `MarketIntel.toc` to match.
 
+**Updating:** exit the game, delete the old `Interface/AddOns/MarketIntel` folder, and unzip the new one in its place. Your price history, ledger, watchlist and settings are kept: they're saved separately in `WTF/Account/<ACCOUNT>/SavedVariables/MarketIntel.lua`.
+
+## What's new
+
+**1.3.1**: checked against real Auctionator and TSM files.
+- **Auctionator import works with Auctionator 8+.** Its database is now stored packed, so Market Intel decodes it. It imports once per auction house, even if you have already scanned there, and in the background without freezing the game.
+- **TSM starred recipes are read correctly**, together with TSM's recipe list, so the Crafting tab works without opening your profession windows.
+- **Vendor prices for materials:** thread, vials and flux are costed at the vendor price when that's cheaper than the AH.
+- **Normal price can't be set by one silly listing.** It takes the lower middle value for an even number of days. A real case: an item selling at 5.81g had read as 505g.
+- **Crafting shows a yellow ?** when the crafted item has very few listings, so its price may just be one seller's asking price.
+
+**1.3.0**: six bug fixes.
+- **Crash:** the posting advisor crashed when only your own auctions were up and the item had no normal price yet.
+- **Ledger undercount:** identical mails (several identical stacks to one buyer, or a batch expiring together) were recorded as one. Each is now counted.
+- **AH data mixing:** switching between the faction and neutral auction house now clears the other one's live listings, deals, snipes and flips.
+- **Flips from partial searches:** flips now need a complete search.
+- **Stale BUY:** the watchlist's BUY now needs a recent price.
+- **Minimap badge** counted alerts while the window was open.
+
+**1.2.0**: BoE Snipe, Flips, posting advisor, Crafting, Ledger, minimap button, CSV export and big alerts.
+
+**1.1.0**: Auctionator history import, compact storage, smoother full scans, and window placement beside the AH.
+
+**1.0.0**: price history, deal alerts and market depth.
+
 ## Getting data
 
 You don't need to do anything special. Every time the auction house shows results, Market Intel reads them. That includes your own searches, Auctionator's shopping lists, Auctionator's **Full Scan**, TSM searches and the default Browse tab.
@@ -29,14 +54,14 @@ You don't need to do anything special. Every time the auction house shows result
 - **Normal searches.** Pages of the same search are merged. If you only looked at page 1 of 3, that snapshot is marked *partial*: its prices are used, but its supply numbers are not.
 - **Watchlist scan.** `/mi scan`, or the button on the Watchlist tab, searches each watched item by exact name, every page.
 
-Each auction house is tracked separately: your faction's AH, plus the neutral AH in Gadgetzan, Booty Bay and Everlook.
+Each auction house is tracked separately: your faction's AH, plus the neutral AH in Gadgetzan, Booty Bay and Everlook. When you switch between them, the live lists (deals, snipes, flips) from the other one are cleared, because those auctions aren't on this AH.
 
 ### Starting with Auctionator's history
-Auctionator already keeps a record of the lowest price it saw each day. The first time you log in with no Market Intel data, the addon copies that history over automatically, so normal prices and deal alerts work from day one instead of after 3 days. You can run it again any time with `/mi import` or the **Import from Auctionator** button in Settings.
+Auctionator already keeps a record of the prices it saw each day. Market Intel copies that history automatically once per auction house, at login, so normal prices and deal alerts work from day one instead of after 3 days. Watch chat for the message: "imported N days of price history for N items from Auctionator". You can run it again any time with `/mi import` or the **Import from Auctionator** button in Settings.
 
 - Days Market Intel already has are never overwritten.
 - Auctionator only records prices and quantity, not sellers. Imported days count toward the normal price and normal supply.
-- Gear that Auctionator tracks per item level is skipped.
+- Gear that Auctionator tracks per item level or random suffix ("of the Monkey"), and battle pets, are skipped; the message says how many.
 - Both of Auctionator's storage formats are read: the packed (CBOR) format of Auctionator's database version 8 and later, and the older plain table. This was checked against a real Auctionator file.
 - If the format isn't recognized, the import says so and changes nothing.
 - It runs once per auction house, even if you have already scanned there.
@@ -72,7 +97,7 @@ Both can be changed in Settings. With these defaults, a big server where 10,000 
 ### Deal alerts
 - The **normal price** is the median daily market value over the last 14 days, not counting today, so a crash today can't lower the bar. With an even number of days it takes the lower middle value, so two days of one silly listing can't drag it halfway up. It needs at least 3 days of history. Until then, TSM's `DBMarket` is used if TSM is installed.
 - A listing is a **deal** when its unit price is at or below **60%** of normal *and* buying it saves at least **2g**. Both numbers can be changed in Settings. Your own auctions are never flagged.
-- **Watchlist targets** alert whenever an item is at or below your price, even with no history: `/mi watch Khorium Ore 20g`.
+- **Watchlist targets** alert whenever an item is at or below your price, even with no history: `/mi watch Khorium Ore 20g`. The Watchlist tab shows **BUY** only for prices seen in the last 2 hours; older ones show "was under, Xh ago", since that auction may be gone.
 - New deals print in chat (up to 5 at once) and play a sound (at most once every 3 seconds). The same listing never alerts twice. When a later full search shows a deal has sold, it's removed from the Deals tab.
 - **Deals tab:** click a row to search that item. With Auctionator installed this uses its shopping tab, otherwise the default Browse tab. Shift-click links the item in chat. Buying is always done by you; addons are not allowed to buy automatically.
 
@@ -104,7 +129,7 @@ Every search and full scan is checked for gear that:
 The **Scan BoE** button (or `/mi snipe`) searches that whole category page by page: rare, then epic, levels 15-55. An auction that is a snipe is reported only as a snipe, not also as a deal. Snipes always get the big alert. Without TSM's region data nothing qualifies, unless you untick *Snipes need TSM sale rate*.
 
 ### Flip finder
-For each item searched in the last 2 hours, it works out how many of the cheapest auctions you could buy and relist just under the next price (never above the normal price):
+For each item searched in the last 2 hours, it works out how many of the cheapest auctions you could buy and relist just under the next price (never above the normal price). Only complete searches count: all pages of a search, or a full scan. After a partial search, cheaper auctions could be on pages you didn't see.
 
 - **Profit** is counted after the 5% AH cut and 24-hour deposits.
 - **Shown only if** it makes at least 5g and a 15% return.
@@ -123,15 +148,15 @@ Shown as **Post at** on tooltips and the Depth tab, and with `/mi post <item>`:
 - **Vendor it** when the auction price after the cut is no better than a vendor's.
 
 ### Crafting profit
-- **Learning recipes:** opening a profession window records each recipe's materials and result (Enchanting too).
-- **Which recipes:** only recipes starred as favourites in TSM's crafting window are evaluated, for your realm and faction. Market Intel reads them from TSM's saved data (`isCraftFavorite` and TSM's recipe list), so you don't even need to open your profession windows. This was checked against a real TSM file: all 51 favourites matched. If TSM's data is missing, right-click recipes in the Crafting tab to star them there instead.
+- **Which recipes:** only recipes starred as favourites in TSM's crafting window are evaluated, for your realm and faction. Market Intel reads them from TSM's saved data (`isCraftFavorite` and TSM's recipe list, which has every recipe's materials and result), so you don't need to open your profession windows. This was checked against a real TSM file: all 51 favourites matched.
+- **Without TSM:** opening a profession window records each recipe's materials and result (Enchanting too). Right-click recipes in the Crafting tab to star them in Market Intel. Tick *Show all known recipes* to see unstarred ones.
 - **Material cost:** TSM's `MatPrice` if available. Otherwise the cheaper of the vendor price (from Auctionator's vendor price cache) and the AH: the normal price, else the latest market value, else Auctionator.
 - **Thin markets:** a yellow **?** next to the profit means the result item has under 3 days of prices, usually only one listed, or a price more than double TSM's regional average. The "price" may be one seller's asking price.
 - **Sale price:** the cheapest current auction of the result, minus the 5% cut.
 - **Deals:** when a deal lowers a material's cost, the Deals tab and the alert show what that recipe would make.
 
 ### Sales ledger
-When you open your mailbox, auction mail is recorded once each: sold, won, expired and cancelled.
+When you open your mailbox, auction mail is recorded: sold, won, expired and cancelled. Each mail is counted once, however often you open the mailbox, and identical mails (several identical stacks bought by one buyer) are each counted.
 
 - **Sold:** sale price, AH cut and buyer. The quantity comes from your own auction list (open the AH *Auctions* tab before collecting).
 - **Won and returned:** quantities come from the attached items.
