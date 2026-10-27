@@ -2,7 +2,7 @@
 local ADDON, ns = ...
 
 ns.name = ADDON or "MarketIntel"
-ns.version = "1.3.0"
+ns.version = "1.3.1"
 
 local floor, format, tostring, tonumber, type, pairs = math.floor, string.format, tostring, tonumber, type, pairs
 
@@ -169,13 +169,17 @@ end
 ---------------------------------------------------------------------------
 -- Small helpers
 ---------------------------------------------------------------------------
-function ns.Median(list)
+-- low = true: for an even count take the lower middle value instead of the
+-- average of the two, so two days of one silly listing cannot drag the
+-- result halfway towards it.
+function ns.Median(list, low)
 	local n = #list
 	if n == 0 then return nil end
 	local copy = {}
 	for i = 1, n do copy[i] = list[i] end
 	table.sort(copy)
 	if n % 2 == 1 then return copy[(n + 1) / 2] end
+	if low then return copy[n / 2] end
 	return (copy[n / 2] + copy[n / 2 + 1]) / 2
 end
 

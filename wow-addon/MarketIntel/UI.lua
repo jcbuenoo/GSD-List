@@ -927,6 +927,7 @@ local function BuildCrafting(page)
 		{ title = "Profit", width = 95, justify = "RIGHT", text = function(e)
 			if not e.profit then return "--" end
 			return (e.profit >= 0 and "|cff40ff40" or "|cffff5050") .. (e.profit < 0 and "-" or "") .. ns.FormatMoney(math.abs(e.profit)) .. "|r"
+				.. (e.thin and " |cffffd200?|r" or "")
 		end, sort = function(e) return e.profit or -math.huge end },
 		{ title = "Margin", width = 55, justify = "RIGHT", text = function(e) return ns.FormatPct(e.margin) end, sort = function(e) return e.margin or -math.huge end },
 		{ title = "With deals", width = 95, justify = "RIGHT", text = function(e)
@@ -952,6 +953,9 @@ local function BuildCrafting(page)
 					part.price and (ns.FormatMoney(part.price * part.count) .. " |cff909090(" .. part.source .. ")|r") or "|cffff5050no price|r", 1, 1, 1, 1, 1, 1)
 			end
 			if e.value then GameTooltip:AddDoubleLine("Sells for (after 5% cut)", ns.FormatMoney(e.value * 0.95), 1, 1, 1, 1, 1, 1) end
+			if e.thin then
+				GameTooltip:AddLine("? Few listings seen for this item: the sale price may not be reliable. Search it before crafting.", 1, 0.82, 0, true)
+			end
 			GameTooltip:AddLine(e.fav == "TSM" and "Starred in TSM." or "Right-click: star or unstar in Market Intel.", 0.7, 0.7, 0.7)
 			GameTooltip:Show()
 		end,
@@ -960,8 +964,7 @@ local function BuildCrafting(page)
 
 	function page:Update()
 		local _, tsmFound = ns.Crafting.GetFavorites()
-		local n = 0
-		for _ in pairs(ns.db.recipes or {}) do n = n + 1 end
+		local n = ns.Crafting.CountRecipes()
 		page.source:SetText(format("%d recipes known. TSM favourites: %s", n,
 			tsmFound and "|cff40ff40read|r" or "|cffff9900not found (star recipes here instead)|r"))
 		page.list:SetData(ns.Crafting.List(page.showAll))

@@ -20,6 +20,6 @@ read_globals = {
 	"GetTradeSkillNumMade", "GetTradeSkillNumReagents", "GetTradeSkillReagentInfo", "GetTradeSkillReagentItemLink",
 	"GetNumCrafts", "GetCraftDisplaySkillLine", "GetCraftInfo", "GetCraftItemLink", "GetCraftNumReagents",
 	"GetCraftReagentInfo", "GetCraftReagentItemLink", "TradeSkillMasterDB", "Minimap", "GetCursorPosition",
-	"ChatFontNormal", "CLOSE",
+	"ChatFontNormal", "CLOSE", "AUCTIONATOR_VENDOR_PRICE_CACHE",
 }
 self = false

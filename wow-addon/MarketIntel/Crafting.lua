@@ -1,7 +1,7 @@
 -- Market Intel: crafting profit for your favourite recipes.
--- Recipes are learnt when you open a profession window. Only recipes starred
--- as favourites in TSM's crafting window are evaluated (plus any you star in
--- Market Intel's Crafting tab, as a backup if TSM's favourites can't be read).
+-- Recipes come from TSM's own recipe list, plus any learnt when you open a
+-- profession window. Only recipes starred as favourites in TSM's crafting
+-- window are evaluated (plus any you star in Market Intel's Crafting tab).
 local _, ns = ...
 
 local C = {}
@@ -97,70 +97,133 @@ ns.On("CRAFT_UPDATE", function() ScheduleScan(C.ScanCraft) end)
 ---------------------------------------------------------------------------
 -- Favourites: TSM's starred recipes
 ---------------------------------------------------------------------------
--- TSM keeps favourites in its saved variables (TradeSkillMasterDB) under a key
--- containing "favorite"; the values are recipe spell IDs or "c:<spellID>"
--- craft strings. TSM does not document this, so we read it defensively.
+-- TSM keeps its data in TradeSkillMasterDB with keys like
+--   "f@Horde - Nightslayer@internalData@isCraftFavorite" = { [12757595] = true, ... }
+--   "f@Horde - Nightslayer@internalData@crafts" = { ["c:12757595"] = { name, profession,
+--       itemString = "i:31080", numResult = 1, mats = { ["i:22451"] = 1, ... } }, ... }
+-- (checked against a real TSM file for TBC Anniversary). Favourites and recipes
+-- are read for your realm and faction; if those are missing, from any realm.
 local tsmCache, tsmCacheAt
-local function SpellIDFrom(v)
-	if type(v) == "number" then return v end
-	if type(v) == "string" then return tonumber(v:match("^c:(%d+)") or v:match("^(%d+)$")) end
-	return nil
-end
 
-function C.GetTSMFavorites()
-	local now = GetTime()
-	if tsmCacheAt and now - tsmCacheAt < 10 then return tsmCache end
-	tsmCacheAt = now
-	tsmCache = nil
+local function TSMTables(suffix)
 	local db = TradeSkillMasterDB
-	if type(db) ~= "table" then return nil end
-	local favs, found = {}, false
+	if type(db) ~= "table" then return {} end
+	local realm, faction = GetRealmName() or "", UnitFactionGroup("player") or ""
+	local mine, others = {}, {}
 	for k, v in pairs(db) do
-		if type(k) == "string" and k:lower():find("favorite", 1, true) and type(v) == "table" then
-			found = true
-			for fk, fv in pairs(v) do
-				local id
-				if fv == true then id = SpellIDFrom(fk) else id = SpellIDFrom(fv) or SpellIDFrom(fk) end
-				if id then favs[id] = true end
+		if type(k) == "string" and type(v) == "table" then
+			local f, r = k:match("^f@(.-) %- (.-)@internalData@" .. suffix .. "$")
+			if f then
+				if f == faction and r == realm then mine[#mine + 1] = v else others[#others + 1] = v end
 			end
 		end
 	end
-	if found then tsmCache = favs end
+	return #mine > 0 and mine or others
+end
+
+-- One TSM recipe in Market Intel's recipe format.
+local function FromTSM(c)
+	local item = type(c.itemString) == "string" and c.itemString:match("^i:(%d+)$") or nil
+	local rec = { n = tostring(c.name or "?"), prof = tostring(c.profession or "?"), item = item,
+		made = tonumber(c.numResult) or 1, r = {}, rn = {}, tsm = true }
+	for mat, count in pairs(type(c.mats) == "table" and c.mats or {}) do
+		local id = type(mat) == "string" and mat:match("^i:(%d+)$")
+		if id and tonumber(count) then rec.r[id] = tonumber(count) else rec.incomplete = true end
+	end
+	if not next(rec.r) then rec.incomplete = true end
+	return rec
+end
+
+-- { favs = { ["c:N"] = true }, recipes = { ["c:N"] = rec }, found = favourites table exists }
+function C.GetTSM()
+	local now = GetTime()
+	if tsmCacheAt and now - tsmCacheAt < 10 then return tsmCache end
+	tsmCacheAt = now
+	local favs, recipes, found = {}, {}, false
+	for _, t in ipairs(TSMTables("isCraftFavorite")) do
+		found = true
+		for id, v in pairs(t) do
+			if v then
+				local cs = tostring(id)
+				if not cs:find("^c:") then cs = "c:" .. cs end
+				favs[cs] = true
+			end
+		end
+	end
+	for _, t in ipairs(TSMTables("crafts")) do
+		for cs, c in pairs(t) do
+			if type(cs) == "string" and type(c) == "table" and not recipes[cs] then recipes[cs] = FromTSM(c) end
+		end
+	end
+	tsmCache = { favs = favs, recipes = recipes, found = found }
 	return tsmCache
 end
 
--- Favourite spell IDs and where they came from.
-function C.GetFavorites()
-	local favs, tsm = {}, C.GetTSMFavorites()
-	for id in pairs(tsm or {}) do favs[id] = "TSM" end
-	for id in pairs(Stars()) do favs[id] = favs[id] or "Market Intel" end
-	return favs, tsm ~= nil
+-- Every known recipe: TSM's list (ids "c:N") plus recipes learnt from the
+-- profession windows (spell IDs) that TSM does not already have.
+function C.AllRecipes()
+	local all, names = {}, {}
+	for id, rec in pairs(C.GetTSM().recipes) do
+		all[id] = rec
+		names[rec.n .. "|" .. rec.prof] = true
+	end
+	for id, rec in pairs(Recipes()) do
+		if not names[rec.n .. "|" .. rec.prof] then all[id] = rec end
+	end
+	return all
 end
 
-function C.ToggleStar(spellID)
+function C.CountRecipes()
+	local n = 0
+	for _ in pairs(C.AllRecipes()) do n = n + 1 end
+	return n
+end
+
+-- Favourite recipe ids and where they came from; second value: TSM favourites were found.
+function C.GetFavorites()
+	local tsm = C.GetTSM()
+	local favs = {}
+	for id in pairs(tsm.favs) do
+		if tsm.recipes[id] then favs[id] = "TSM" end
+	end
+	for id in pairs(Stars()) do favs[id] = favs[id] or "Market Intel" end
+	return favs, tsm.found
+end
+
+function C.ToggleStar(id)
 	local stars = Stars()
-	stars[spellID] = not stars[spellID] or nil
+	stars[id] = not stars[id] or nil
 	ns.Fire("MI_DATA_UPDATED")
 end
 
-function C.IsStarred(spellID) return Stars()[spellID] == true end
+function C.IsStarred(id) return Stars()[id] == true end
 
 ---------------------------------------------------------------------------
 -- Prices and profit
 ---------------------------------------------------------------------------
--- Price per reagent: TSM's material price (it knows vendor prices), else the
--- normal price from history (steadier than one search), else the latest
--- market value, else Auctionator.
+-- What a vendor charges for an item: Auctionator's vendor price cache, else TSM.
+function C.VendorPrice(key)
+	local cache = AUCTIONATOR_VENDOR_PRICE_CACHE
+	local v = type(cache) == "table" and tonumber(cache[tostring(key)])
+	if v and v > 0 then return v end
+	return ns.Integrations.GetTSMPrice(key, "vendorbuy")
+end
+
+-- Price per reagent: TSM's material price if TSM has one; otherwise the cheaper
+-- of the vendor price and the auction house (normal price from history, which
+-- is steadier than one search, else the latest market value, else Auctionator).
 function C.ReagentPrice(key)
 	local tsm = ns.Integrations.GetTSMPrice(key, "matprice")
 	if tsm then return tsm, "TSM" end
-	local ref = ns.History.GetReference(key)
-	if ref then return ref, "normal" end
-	local latest = ns.History.GetLatest(key)
-	if latest then return latest.mkt, "AH" end
-	local a = ns.Integrations.GetAuctionatorPrice(key)
-	if a then return a, "Auctionator" end
-	return nil
+	local ah, source = ns.History.GetReference(key), "normal"
+	if not ah then
+		local latest = ns.History.GetLatest(key)
+		ah, source = latest and latest.mkt, "AH"
+	end
+	if not ah then ah, source = ns.Integrations.GetAuctionatorPrice(key), "Auctionator" end
+	local vendor = C.VendorPrice(key)
+	if vendor and (not ah or vendor <= ah) then return vendor, "vendor" end
+	return ah, ah and source or nil
 end
 
 -- What one crafted item sells for: the cheapest current listing, else normal price, else TSM.
@@ -194,6 +257,15 @@ function C.Evaluate(rec, overrides)
 	table.sort(parts, function(a, b) return (a.price or 0) * a.count > (b.price or 0) * b.count end)
 	local value = rec.item and C.ResultValue(rec.item)
 	local out = { cost = cost, missing = missing or rec.incomplete, parts = parts, value = value }
+	if rec.item and value then
+		-- few days of data, or usually only one listed: the sale price rests on very few listings
+		local days = #ns.History.GetDaily(ns.History.GetItem(rec.item), nil, 14)
+		local supply = ns.History.GetNormalSupply(rec.item)
+		out.thin = days < 3 or (supply ~= nil and supply < 2)
+		-- far above TSM's regional average: probably an asking price nobody pays
+		local region = ns.Integrations.GetTSMPrice(rec.item, "dbregionmarketavg")
+		if region and value > region * 2 then out.thin = true end
+	end
 	if value and not out.missing then
 		out.net = value * (1 - AH_CUT) * (rec.made or 1)
 		out.profit = out.net - cost
@@ -207,14 +279,14 @@ function C.List(showAll)
 	local favs = C.GetFavorites()
 	local deals = DealPrices()
 	local out = {}
-	for spellID, rec in pairs(Recipes()) do
-		local source = favs[spellID]
+	for id, rec in pairs(C.AllRecipes()) do
+		local source = favs[id]
 		if source or showAll then
 			local base = C.Evaluate(rec)
 			local withDeals = C.Evaluate(rec, deals)
 			out[#out + 1] = {
-				spellID = spellID, rec = rec, name = rec.n, prof = rec.prof, key = rec.item, fav = source,
-				cost = base.cost, value = base.value, profit = base.profit, margin = base.margin, missing = base.missing,
+				spellID = id, rec = rec, name = rec.n, prof = rec.prof, key = rec.item, fav = source,
+				cost = base.cost, value = base.value, profit = base.profit, margin = base.margin, missing = base.missing, thin = base.thin,
 				parts = base.parts, dealProfit = (withDeals.profit and base.profit and withDeals.profit > base.profit + 0.5) and withDeals.profit or nil,
 			}
 		end
@@ -226,13 +298,13 @@ end
 function C.DealImpact(deal)
 	local favs = C.GetFavorites()
 	local best
-	for spellID, rec in pairs(Recipes()) do
-		if favs[spellID] and rec.r[deal.key] and rec.item then
+	for id, rec in pairs(C.AllRecipes()) do
+		if favs[id] and rec.r[deal.key] and rec.item then
 			local before = C.Evaluate(rec)
 			local after = C.Evaluate(rec, { [deal.key] = deal.unit })
 			if after.profit and after.profit > 0 and (not before.profit or after.profit > before.profit)
 				and (not best or after.profit > best.profit) then
-				best = { spellID = spellID, name = rec.n, profit = after.profit, before = before.profit }
+				best = { spellID = id, name = rec.n, profit = after.profit, before = before.profit }
 			end
 		end
 	end

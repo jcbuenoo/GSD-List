@@ -18,7 +18,7 @@ It never buys, posts or cancels anything: it records prices and makes suggestion
 
 ## Install
 
-1. Download `dist/MarketIntel-1.3.0.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
+1. Download `dist/MarketIntel-1.3.1.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
 2. Restart the game. If the addon shows as "out of date", tick **Load out of date AddOns** on the character-select AddOns screen. To see your client's interface number, run `/dump select(4, GetBuildInfo())`. Then update the `## Interface:` line in `MarketIntel.toc` to match.
 
 ## Getting data
@@ -37,7 +37,9 @@ Auctionator already keeps a record of the lowest price it saw each day. The firs
 - Days Market Intel already has are never overwritten.
 - Auctionator only records prices and quantity, not sellers. Imported days count toward the normal price and normal supply.
 - Gear that Auctionator tracks per item level is skipped.
-- If Auctionator's saved format isn't the one expected, the import says so and changes nothing.
+- Both of Auctionator's storage formats are read: the packed (CBOR) format of Auctionator's database version 8 and later, and the older plain table. This was checked against a real Auctionator file.
+- If the format isn't recognized, the import says so and changes nothing.
+- It runs once per auction house, even if you have already scanned there.
 
 ## How it works
 
@@ -68,7 +70,7 @@ Both can be changed in Settings. With these defaults, a big server where 10,000 
 **Tooltips:** item tooltips show min/market with trend, the 7d/30d averages, the normal price, the depth rating, and how many you have listed.
 
 ### Deal alerts
-- The **normal price** is the median daily market value over the last 14 days, not counting today, so a crash today can't lower the bar. It needs at least 3 days of history. Until then, TSM's `DBMarket` is used if TSM is installed.
+- The **normal price** is the median daily market value over the last 14 days, not counting today, so a crash today can't lower the bar. With an even number of days it takes the lower middle value, so two days of one silly listing can't drag it halfway up. It needs at least 3 days of history. Until then, TSM's `DBMarket` is used if TSM is installed.
 - A listing is a **deal** when its unit price is at or below **60%** of normal *and* buying it saves at least **2g**. Both numbers can be changed in Settings. Your own auctions are never flagged.
 - **Watchlist targets** alert whenever an item is at or below your price, even with no history: `/mi watch Khorium Ore 20g`.
 - New deals print in chat (up to 5 at once) and play a sound (at most once every 3 seconds). The same listing never alerts twice. When a later full search shows a deal has sold, it's removed from the Deals tab.
@@ -122,8 +124,9 @@ Shown as **Post at** on tooltips and the Depth tab, and with `/mi post <item>`:
 
 ### Crafting profit
 - **Learning recipes:** opening a profession window records each recipe's materials and result (Enchanting too).
-- **Which recipes:** only recipes starred as favourites in TSM's crafting window are evaluated. Market Intel reads them from TSM's saved data. If they can't be read, right-click recipes in the Crafting tab to star them there instead.
-- **Material cost:** TSM's `MatPrice` (which knows vendor prices), else the normal price, else the latest market value, else Auctionator.
+- **Which recipes:** only recipes starred as favourites in TSM's crafting window are evaluated, for your realm and faction. Market Intel reads them from TSM's saved data (`isCraftFavorite` and TSM's recipe list), so you don't even need to open your profession windows. This was checked against a real TSM file: all 51 favourites matched. If TSM's data is missing, right-click recipes in the Crafting tab to star them there instead.
+- **Material cost:** TSM's `MatPrice` if available. Otherwise the cheaper of the vendor price (from Auctionator's vendor price cache) and the AH: the normal price, else the latest market value, else Auctionator.
+- **Thin markets:** a yellow **?** next to the profit means the result item has under 3 days of prices, usually only one listed, or a price more than double TSM's regional average. The "price" may be one seller's asking price.
 - **Sale price:** the cheapest current auction of the result, minus the 5% cut.
 - **Deals:** when a deal lowers a material's cost, the Deals tab and the alert show what that recipe would make.
 
@@ -191,8 +194,7 @@ The tests use a mock client, so these details are written from the TBC Classic /
 - The return order of `GetAuctionItemInfo` (item ID as the 17th value), and the exact-match argument of `QueryAuctionItems` (8th).
 - Map IDs used to detect the neutral AH: 1446 Tanaris, 1434 Stranglethorn, 1452 Winterspring.
 - Auctionator's `MultiSearchExact` API. If it's missing, row clicks fall back to the default Browse search.
-- Auctionator's saved price format (`AUCTIONATOR_PRICE_DATABASE`) and its day numbering, used by the import.
-- Where TSM keeps starred recipes in `TradeSkillMasterDB` (Market Intel looks for any key containing "favorite"), and that TSM's `DBRegionSoldPerDay` and `MatPrice` sources exist for your Classic region.
+- That TSM's `DBRegionSoldPerDay`, `DBRegionMarketAvg` and `MatPrice` sources return data for your Classic region (they need the TSM desktop app). Auctionator's saved format and TSM's starred recipes have now been checked against real files.
 - Mail functions (`GetInboxInvoiceInfo`, `GetInboxItem`) and the profession window functions return values in the order expected.
 - Whether the auction house's quality filter is "exactly this quality" or "this quality and above". The snipe scan searches rare and epic separately, so both cases are covered.
 - The layout was drawn and checked in a browser with a similar font, not in the game itself. WoW's font is a little different, so very long item names may cut off at slightly different points.

@@ -1,4 +1,4 @@
-MARKET INTEL 1.3.0 - auction house helper for WoW TBC Classic
+MARKET INTEL 1.3.1 - auction house helper for WoW TBC Classic
 =============================================================
 
 Works alongside Auctionator and TradeSkillMaster (TSM). It never buys, posts
@@ -41,7 +41,9 @@ History    Daily price chart (7/30/90 days), averages, swings, best weekday to
            sell and to buy. CSV buttons export one item or all items.
 Crafting   Profit for recipes you starred in TSM's crafting window (or starred
            here with right-click): material cost, sale price, profit, margin,
-           and profit if you buy the current deals on materials.
+           and profit if you buy the current deals on materials. Read straight
+           from TSM, no need to open your profession windows. A yellow "?"
+           means very few listings: check the price before crafting.
 Ledger     Sales, purchases, expired and cancelled auctions read from your
            mail: totals, AH cut, net profit and sell-through per item.
 Watchlist  Price alerts: an item plus a price, e.g. "Khorium Ore" at 20g.

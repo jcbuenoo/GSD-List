@@ -444,7 +444,7 @@ function H.GetReference(key, now)
 			if d.day ~= today then values[#values + 1] = d.mkt end
 		end
 		if #values >= ns.settings.minHistoryDays then
-			return ns.Median(values), "history"
+			return ns.Median(values, true), "history"
 		end
 	end
 	if ns.settings.useTSMFallback then

@@ -552,6 +552,149 @@ test("Auctionator history import seeds normal prices immediately", function()
 	eq(type(ns.realm.importedAuctionator), "number")
 end)
 
+-- Minimal CBOR encoder (tests only), producing data the way Auctionator 8+ packs it:
+-- map keys as byte strings, empty tables as empty arrays.
+local function cborHead(major, n)
+	if n < 24 then return string.char(major * 32 + n) end
+	if n < 256 then return string.char(major * 32 + 24, n) end
+	if n < 65536 then return string.char(major * 32 + 25, math.floor(n / 256), n % 256) end
+	local b = {}
+	for i = 3, 0, -1 do b[#b + 1] = math.floor(n / 256 ^ i) % 256 end
+	return string.char(major * 32 + 26, unpack(b))
+end
+local function cbor(v)
+	local t = type(v)
+	if t == "number" then
+		if v >= 0 and v % 1 == 0 then return cborHead(0, v) end
+		if v < 0 and v % 1 == 0 then return cborHead(1, -1 - v) end
+		error("floats not needed in tests")
+	elseif t == "string" then return cborHead(2, #v) .. v
+	elseif t == "boolean" then return string.char(v and 0xf5 or 0xf4)
+	elseif t == "table" then
+		if next(v) == nil then return string.char(0x80) end
+		local parts, n = {}, 0
+		local keys = {}
+		for k in pairs(v) do keys[#keys + 1] = k end
+		table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+		for _, k in ipairs(keys) do
+			parts[#parts + 1] = cbor(k) .. cbor(v[k])
+			n = n + 1
+		end
+		return cborHead(5, n) .. table.concat(parts)
+	end
+	error("cannot encode " .. t)
+end
+
+test("CBOR decoder reads Auctionator's packed format, including floats and odd encodings", function()
+	local ns = load(nil)
+	local value = ns.Integrations.CBORDecoder(cbor({ ["25115"] = { a = { ["2488"] = 2 }, l = {}, m = 1660800, h = { ["2488"] = 1220199 } } }))
+	local t = value()
+	eq(t["25115"].m, 1660800); eq(t["25115"].h["2488"], 1220199); eq(next(t["25115"].l), nil)
+	-- floats (half, single, double), negative ints, true/false/nil, tags, indefinite strings/arrays/maps
+	local raw = string.char(0x88, 0xf9, 0x3e, 0x00, 0xfa, 0x40, 0x49, 0x0f, 0xdb, 0xfb, 0x40, 0x09, 0x21, 0xfb, 0x54, 0x44, 0x2d, 0x18,
+		0x38, 0x63, 0xf5, 0xf6, 0xc1, 0x1a, 0x5f, 0x5e, 0x10, 0x00)
+		.. string.char(0x5f, 0x42, 0x61, 0x62, 0x41, 0x63, 0xff) -- indefinite byte string "abc"
+	value = ns.Integrations.CBORDecoder(raw .. string.char(0xbf, 0x41, 0x6b, 0x9f, 0x01, 0x02, 0xff, 0xff))
+	t = value()
+	eq(t[1], 1.5); near(t[2], 3.14159274, 1e-6); near(t[3], math.pi, 1e-12); eq(t[4], -100); eq(t[5], true); eq(t[6], nil)
+	eq(t[7], 1600000000); eq(t[8], "abc")
+	local m = value()
+	eq(m.k[2], 2)
+	-- truncated data is reported, not crashed on
+	local ok, err = pcall(ns.Integrations.CBORDecoder(string.char(0x45, 0x31, 0x32)))
+	assert(not ok and tostring(err):find("ends early"), "truncated: " .. tostring(err))
+end)
+
+test("Auctionator import reads the packed (CBOR) database of Auctionator 8+", function()
+	local day0 = os.time({ year = 2020, month = 1, day = 1, hour = 0 })
+	local today = math.floor((M.now - day0) / DAY)
+	local function entry(price, withLow)
+		local e = { a = {}, h = {}, l = {}, m = price }
+		for d = today - 6, today - 1 do
+			e.h[tostring(d)] = price + 1000
+			e.a[tostring(d)] = 12
+			if withLow then e.l[tostring(d)] = price - 1000 end
+		end
+		return e
+	end
+	local realm = { ["23571"] = entry(800000, true), ["22451"] = entry(100000, false),
+		["gr:9844:of Intellect"] = entry(5, true), ["g:28432:115"] = entry(5, true), ["p:1234"] = entry(5, true) }
+	_G.AUCTIONATOR_PRICE_DATABASE = { __dbversion = 8, ["Dreamscythe Alliance"] = cbor(realm), ["Other Realm Horde"] = cbor({}) }
+	local ns = load(nil)
+	M.Tick(1)
+	assert(chatHas("imported 12 days of price history for 2 items"), "import message: " .. tostring(M.chat[#M.chat]))
+	assert(chatHas("3 gear/pet entries skipped"), "skipped count")
+	eq(ns.History.GetReference("23571"), 800000, "midpoint of low and high")
+	eq(ns.History.GetReference("22451"), 101000, "high only")
+	eq(ns.History.GetNormalSupply("23571"), 12)
+	-- corrupt packed data is reported and nothing breaks
+	M.reset()
+	_G.AUCTIONATOR_PRICE_DATABASE = { __dbversion = 8, ["Dreamscythe Alliance"] = cbor(realm):sub(1, 200) }
+	ns = load(nil)
+	M.Tick(1)
+	assert(chatHas("could not be read") or chatHas("not recognized"), "corrupt data not reported: " .. tostring(M.chat[#M.chat]))
+	eq(#M.errors, 0)
+	-- not a map at all
+	M.reset()
+	_G.AUCTIONATOR_PRICE_DATABASE = { __dbversion = 8, ["Dreamscythe Alliance"] = "\1\2\3" }
+	ns = load(nil)
+	SlashCmdList.MARKETINTEL("import")
+	M.Tick(1)
+	assert(chatHas("not recognized"), "non-map not reported")
+end)
+
+test("Auctionator import also runs for an auction house that already has scan data", function()
+	local ns = load(nil)
+	M.OpenAH()
+	addAuctions("Primal Might", 23571, 3, 800000)
+	search("Primal Might"); M.Tick(3)
+	M.CloseAH()
+	local day0 = os.time({ year = 2020, month = 1, day = 1, hour = 0 })
+	local d = tostring(math.floor((M.now - day0) / DAY) - 2)
+	_G.AUCTIONATOR_PRICE_DATABASE = { __dbversion = 8, ["Dreamscythe Alliance"] = cbor({ ["23571"] = { h = { [d] = 900000 }, l = {}, a = {}, m = 1 } }) }
+	ns.Fire("MI_READY") -- next login
+	M.Tick(1)
+	eq(#ns.History.GetDaily(ns.History.GetItem("23571"), M.now), 2, "imported day added next to today's scan")
+	eq(type(ns.realm.importedAuctionator), "number")
+end)
+
+test("a few days of one silly listing cannot set the normal price; thin crafting prices are flagged", function()
+	-- the real Gnomish Flame Turret case: 5.81g for two days, then a lone 1,004g listing for two days
+	local day0 = os.time({ year = 2020, month = 1, day = 1, hour = 0 })
+	local today = math.floor((M.now - day0) / DAY)
+	local turret = { h = {}, l = {}, a = {}, m = 10042300 }
+	for i, p in ipairs({ 58100, 58100, 10042300, 10042300 }) do
+		turret.h[tostring(today - 5 + i)] = p
+		turret.a[tostring(today - 5 + i)] = ({ 68, 15, 8, 1 })[i]
+	end
+	local ray = { h = {}, l = {}, a = {}, m = 4500000 }
+	for i = 1, 3 do ray.h[tostring(today - 4 + i)] = 4500000; ray.a[tostring(today - 4 + i)] = 1 end
+	_G.AUCTIONATOR_PRICE_DATABASE = { __dbversion = 8, ["Dreamscythe Alliance"] = cbor({ ["23841"] = turret, ["10716"] = ray }) }
+	_G.TradeSkillMasterDB = {
+		["f@Alliance - Dreamscythe@internalData@isCraftFavorite"] = { [1] = true, [2] = true },
+		["f@Alliance - Dreamscythe@internalData@crafts"] = {
+			["c:1"] = { name = "Gnomish Flame Turret", profession = "Engineering", itemString = "i:23841", numResult = 3, mats = { ["i:3371"] = 1 } },
+			["c:2"] = { name = "Gnomish Shrink Ray", profession = "Engineering", itemString = "i:10716", numResult = 1, mats = { ["i:3371"] = 1 } },
+		},
+	}
+	_G.AUCTIONATOR_VENDOR_PRICE_CACHE = { ["3371"] = 4 }
+	local ns = load(nil)
+	M.Tick(1)
+	eq(ns.History.GetReference("23841"), 58100, "lone 1,004g listing set the normal price")
+	local byName = {}
+	for _, e in ipairs(ns.Crafting.List(false)) do byName[e.name] = e end
+	eq(byName["Gnomish Flame Turret"].thin, false)
+	near(byName["Gnomish Flame Turret"].profit, 58100 * 0.95 * 3 - 4, 1)
+	eq(byName["Gnomish Shrink Ray"].thin, true, "one listing a day must be flagged")
+	eq(byName["Gnomish Flame Turret"].parts[1].source, "vendor")
+	ns.UI.Show("crafting")
+	local found
+	for _, row in ipairs(ns.UI.GetPage("crafting").list.rows) do
+		if row.entry and row.entry.name == "Gnomish Shrink Ray" then found = row.cells[5]:GetText() end
+	end
+	assert(found and found:find("%?"), "thin profit not marked")
+end)
+
 test("Auctionator import picks the right faction and rejects unknown formats", function()
 	fakeAuctionator("Dreamscythe Horde", { [1] = 100 }, 5)
 	AUCTIONATOR_PRICE_DATABASE["Dreamscythe Alliance"] = AUCTIONATOR_PRICE_DATABASE["Dreamscythe Horde"]
@@ -861,9 +1004,17 @@ end)
 
 test("crafting: TSM-starred recipes only, profit, and deals that make a craft profitable", function()
 	local ns = load(nil)
+	-- TSM's real layout (TBC Anniversary): favourites are craft numbers, recipes live under "crafts"
 	_G.TradeSkillMasterDB = {
-		["c@Tester - Dreamscythe@internalData@favoriteCrafts"] = { ["c:31080"] = true },
-		["g@ @global@other"] = { x = 1 },
+		["f@Alliance - Dreamscythe@internalData@isCraftFavorite"] = { [12757595] = true },
+		["f@Alliance - Dreamscythe@internalData@crafts"] = {
+			["c:12757595"] = { name = "Bold Living Ruby", profession = "Jewelcrafting", itemString = "i:24027", numResult = 1,
+				mats = { ["i:23436"] = 1 }, players = { Tester = true } },
+			["c:5555"] = { name = "Smooth Golden Draenite", profession = "Jewelcrafting", itemString = "i:23114", numResult = 1,
+				mats = { ["i:23112"] = 1 } },
+		},
+		["f@Horde - Otherrealm@internalData@isCraftFavorite"] = { [99] = true }, -- another realm: ignored
+		["g@ @mainUIContext@isFavorite"] = { [1] = true }, -- unrelated TSM setting: ignored
 	}
 	M.tradeskill = { line = "Jewelcrafting", recipes = {
 		{ name = "Gems", header = true },
@@ -884,7 +1035,7 @@ test("crafting: TSM-starred recipes only, profit, and deals that make a craft pr
 	search("Living Ruby"); search("Bold Living Ruby"); M.Tick(3)
 	local list = ns.Crafting.List(false)
 	eq(#list, 1, "only the TSM favourite")
-	eq(list[1].fav, "TSM")
+	eq(list[1].fav, "TSM"); eq(list[1].name, "Bold Living Ruby"); eq(list[1].spellID, "c:12757595")
 	near(list[1].profit, 1000000 * 0.95 - 1000000, 1, "loses the AH cut")
 	-- a Living Ruby deal makes the starred craft profitable, and the alert says so
 	M.chat = {}
@@ -895,9 +1046,9 @@ test("crafting: TSM-starred recipes only, profit, and deals that make a craft pr
 	eq(ns.deals[1].craft.name, "Bold Living Ruby")
 	list = ns.Crafting.List(false)
 	near(list[1].dealProfit, 1000000 * 0.95 - 500000, 1)
-	-- all recipes view, star a recipe in Market Intel
+	-- all recipes view (TSM's list plus the profession window, without duplicates), star one in Market Intel
 	eq(#ns.Crafting.List(true), 2)
-	ns.Crafting.ToggleStar(25255)
+	ns.Crafting.ToggleStar("c:5555")
 	eq(#ns.Crafting.List(false), 2)
 	ns.UI.Show("crafting")
 	assert(ns.UI.GetPage("crafting").source:GetText():find("read"), "TSM favourites read")
