@@ -1,4 +1,4 @@
-MARKET INTEL 1.2.0 - auction house helper for WoW TBC Classic
+MARKET INTEL 1.3.0 - auction house helper for WoW TBC Classic
 =============================================================
 
 Works alongside Auctionator and TradeSkillMaster (TSM). It never buys, posts

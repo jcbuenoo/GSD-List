@@ -276,7 +276,15 @@ ns.On("AUCTION_HOUSE_SHOW", function()
 	ahOpen = true
 	ns.playerName = ns.playerName or UnitName("player")
 	ns.playerFullName = ns.playerName .. "-" .. (GetRealmName() or ""):gsub("%s+", "")
-	ns.SetAuctionHouse(ns.GetAuctionHouseKey())
+	local key = ns.GetAuctionHouseKey()
+	if key ~= ns.realmKey then
+		-- a different auction house (faction vs neutral): live listings, deals,
+		-- snipes and flips from the other one no longer apply
+		wipe(ns.current)
+		ns.Analysis.ClearDeals()
+		ns.Snipe.Clear()
+	end
+	ns.SetAuctionHouse(key)
 	ns.Fire("MI_AH_OPENED")
 end)
 

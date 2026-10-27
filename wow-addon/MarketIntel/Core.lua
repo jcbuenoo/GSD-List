@@ -2,7 +2,7 @@
 local ADDON, ns = ...
 
 ns.name = ADDON or "MarketIntel"
-ns.version = "1.2.0"
+ns.version = "1.3.0"
 
 local floor, format, tostring, tonumber, type, pairs = math.floor, string.format, tostring, tonumber, type, pairs
 

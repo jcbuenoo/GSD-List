@@ -2,7 +2,7 @@
 ## Title: Market Intel
 ## Notes: Auction house price history, deals, BoE snipes, flips, posting advice, crafting profit and a sales ledger. Works alongside Auctionator and TSM.
 ## Author: jcbuenoo
-## Version: 1.2.0
+## Version: 1.3.0
 ## SavedVariables: MarketIntelDB
 ## OptionalDeps: Auctionator, TradeSkillMaster
 

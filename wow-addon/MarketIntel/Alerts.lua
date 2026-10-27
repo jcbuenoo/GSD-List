@@ -50,7 +50,7 @@ function AL.Notify(kind, lines, strong, headline)
 		end
 		if s.alertFlash and FlashClientIcon then FlashClientIcon() end
 	end
-	AL.unseen = AL.unseen + #lines
+	if not (ns.UI and ns.UI.IsShown()) then AL.unseen = AL.unseen + #lines end
 	ns.Fire("MI_ALERT", kind, #lines, strong)
 end
 

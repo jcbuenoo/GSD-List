@@ -80,18 +80,25 @@ function L.Record(entry)
 	entry.key = entry.key or ns.History.FindKeyByName(entry.name)
 end
 
--- A mail is identified by what it says plus roughly when it was sent, so the
--- same mail is never counted twice however often the mailbox is opened.
+-- A mail is identified by what it says plus when it was sent (to 5 minutes;
+-- neighbouring slots are checked too), so the same mail is never counted
+-- twice however often the mailbox is opened.
+local SLOT = 300
 local function MailId(kind, name, who, money, sentAt)
-	return string.format("%s|%s|%s|%d|%d", kind, name or "?", who or "?", money or 0, math.floor(sentAt / 3600))
+	return string.format("%s|%s|%s|%d|%d", kind, name or "?", who or "?", money or 0, math.floor(sentAt / SLOT))
 end
 
+-- Identical mails (one buyer buying several identical stacks, a batch of
+-- auctions expiring together) are counted: seen[id] holds how many of that
+-- exact mail were recorded, and only extra copies are added.
 function L.ScanInbox()
 	if not ns.realm then return 0 end
 	local _, seen = Store()
 	local subjects = Subjects()
 	local now = time()
 	local added = 0
+	local found = {} -- id -> { entries, near = neighbouring ids }
+	local order = {}
 	for i = 1, (GetInboxNumItems() or 0) do
 		local _, _, sender, subject, money, _, daysLeft = GetInboxHeaderInfo(i)
 		if subject and daysLeft then
@@ -110,10 +117,15 @@ function L.ScanInbox()
 				local sentAt = now - (MAIL_DAYS - daysLeft) * 86400
 				local amount = bid or money or 0
 				local id = MailId(kind, itemName, player or sender, amount, sentAt)
-				local bucketBefore = MailId(kind, itemName, player or sender, amount, sentAt - 3600)
-				local bucketAfter = MailId(kind, itemName, player or sender, amount, sentAt + 3600)
-				if not (seen[id] or seen[bucketBefore] or seen[bucketAfter]) then
-					seen[id] = now
+				local group = found[id]
+				if not group then
+					group = { entries = {}, near = {
+						MailId(kind, itemName, player or sender, amount, sentAt - SLOT),
+						MailId(kind, itemName, player or sender, amount, sentAt + SLOT) } }
+					found[id] = group
+					order[#order + 1] = id
+				end
+				do
 					local entry = { t = math.floor(sentAt), type = kind, name = itemName, who = player }
 					if kind == "sold" and (invoiceType == "seller" or not invoiceType) then
 						entry.gross = bid or money
@@ -129,11 +141,20 @@ function L.ScanInbox()
 						local _, count = Attachment(i)
 						entry.qty = count
 					end
-					L.Record(entry)
-					added = added + 1
+					table.insert(group.entries, entry)
 				end
 			end
 		end
+	end
+	for _, id in ipairs(order) do
+		local group = found[id]
+		local function count(v) return type(v) == "table" and v.n or (v and 1 or 0) end
+		local already = math.max(count(seen[id]), count(seen[group.near[1]]), count(seen[group.near[2]]))
+		for i = already + 1, #group.entries do
+			L.Record(group.entries[i])
+			added = added + 1
+		end
+		if #group.entries > already then seen[id] = { n = #group.entries, t = now } end
 	end
 	if added > 0 then
 		L.Prune(now)
@@ -150,7 +171,8 @@ function L.Prune(now)
 		if e.t >= cutoff then keep[#keep + 1] = e end
 	end
 	ns.realm.ledger = keep
-	for id, t in pairs(seen) do
+	for id, v in pairs(seen) do
+		local t = type(v) == "table" and v.t or v
 		if t < now - (MAIL_DAYS + 2) * 86400 then seen[id] = nil end
 	end
 end

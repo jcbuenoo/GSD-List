@@ -322,9 +322,12 @@ function W.List()
 	for lower, w in pairs(ns.db.watch) do
 		local key = ns.History.FindKeyByName(w.name)
 		local latest = key and ns.History.GetLatest(key)
+		local under = latest and w.max and latest.min <= w.max or false
+		-- "BUY" only for prices seen recently; older ones may be long gone
+		local recent = latest and time() - latest.t <= ns.settings.flipMaxAge * 60
 		out[#out + 1] = {
 			lower = lower, name = w.name, max = w.max, key = key, latest = latest,
-			buy = latest and w.max and latest.min <= w.max or false,
+			buy = under and recent or false, wasUnder = under and not recent,
 		}
 	end
 	table.sort(out, function(a, b)

@@ -973,6 +973,106 @@ test("strong alerts only for big deals; CSV export escapes and opens from every 
 end)
 
 ---------------------------------------------------------------------------
+-- 1.2.1 regressions
+---------------------------------------------------------------------------
+test("advisor: only your own auctions and no normal price does not crash", function()
+	local ns = load(nil)
+	M.OpenAH()
+	addAuctions("Lonely Thing", 41000, 3, 50000, { owner = M.player })
+	search("Lonely Thing"); M.Tick(3)
+	local a = ns.Advisor.PostPrice("41000")
+	assert(a, "should still advise from the last price seen")
+	eq(a.action, "PREMIUM"); eq(a.price, 55000)
+	assert(a.reason:find("No normal price"), a.reason)
+	-- the tooltip, Depth tab and /mi post all work
+	GameTooltip:SetHyperlink(M.Link(41000, "Lonely Thing"))
+	ns.UI.Show("depth")
+	SlashCmdList.MARKETINTEL("post Lonely Thing")
+	assert(chatHas("Lonely Thing: "), "post output")
+	eq(ns.Advisor.PostPrice("999999"), nil, "unknown item")
+end)
+
+test("ledger: identical mails are each counted, and collecting mail never double counts", function()
+	local ns = load(nil)
+	local function sale(minutesAgo)
+		return { subject = "Auction successful: Netherweave Cloth", money = 95000, daysLeft = 30 - minutesAgo / 1440,
+			invoice = { type = "seller", item = "Netherweave Cloth", player = "Bulkbuyer", bid = 100000, buyout = 100000, deposit = 0, cut = 5000 } }
+	end
+	M.mail = { sale(10), sale(10), sale(10) } -- one buyer bought three identical stacks
+	M.FireEvent("MAIL_INBOX_UPDATE"); M.Tick(1)
+	eq(#ns.Ledger.Entries(), 3, "three identical sales")
+	M.FireEvent("MAIL_INBOX_UPDATE"); M.Tick(1)
+	eq(#ns.Ledger.Entries(), 3, "reopening")
+	table.remove(M.mail); table.remove(M.mail) -- collected two of them
+	M.now = M.now + 120
+	for _, m in ipairs(M.mail) do m.daysLeft = m.daysLeft - 120 / 86400 end
+	M.FireEvent("MAIL_INBOX_UPDATE"); M.Tick(1)
+	eq(#ns.Ledger.Entries(), 3, "after collecting")
+	table.insert(M.mail, sale(0)) -- a new identical sale, 12 minutes after the first ones
+	M.FireEvent("MAIL_INBOX_UPDATE"); M.Tick(1)
+	eq(#ns.Ledger.Entries(), 4, "new identical sale")
+	-- five identical stacks expiring together
+	M.mail = {}
+	for _ = 1, 5 do table.insert(M.mail, { subject = "Auction expired: Fel Lotus", daysLeft = 29.5, item = { name = "Fel Lotus", id = 22794, count = 2 } }) end
+	M.FireEvent("MAIL_INBOX_UPDATE"); M.Tick(1)
+	eq(ns.Ledger.Summary(30).expired, 5)
+end)
+
+test("switching between faction and neutral auction house clears live listings, deals and flips", function()
+	local ns = load(nil)
+	M.OpenAH()
+	recordDays(ns, "Living Ruby", 23436, 5, 1000000)
+	M.auctions = {}
+	addAuctions("Living Ruby", 23436, 3, 500000)
+	addAuctions("Living Ruby", 23436, 6, 980000)
+	search("Living Ruby"); M.Tick(3)
+	assert(#ns.deals > 0 and #ns.Advisor.FindFlips(M.now) > 0, "setup")
+	M.CloseAH()
+	M.mapID = 1446 -- Gadgetzan
+	M.OpenAH()
+	eq(#ns.deals, 0, "faction deals shown at the neutral AH")
+	eq(#ns.Advisor.FindFlips(M.now), 0, "faction flips shown at the neutral AH")
+	eq(ns.current["23436"], nil)
+	-- returning to the same auction house keeps things
+	M.auctions = {}
+	addAuctions("Living Ruby", 23436, 2, 700000)
+	search("Living Ruby"); M.Tick(3)
+	M.CloseAH(); M.OpenAH()
+	assert(ns.current["23436"], "same AH should keep live data")
+end)
+
+test("flips are not suggested from a partial search", function()
+	local ns = load(nil)
+	M.OpenAH()
+	recordDays(ns, "Living Ruby", 23436, 5, 1000000, 60)
+	M.auctions = {}
+	addAuctions("Living Ruby", 23436, 3, 500000)
+	addAuctions("Living Ruby", 23436, 60, 980000)
+	search("Living Ruby", 0); M.Tick(3) -- page 1 of 2 only
+	eq(ns.History.GetLatest("23436").full, false)
+	eq(#ns.Advisor.FindFlips(M.now), 0)
+	search("Living Ruby", 1); M.Tick(3)
+	eq(#ns.Advisor.FindFlips(M.now), 1, "complete search")
+end)
+
+test("watchlist BUY only for recent prices; badge ignores alerts while the window is open", function()
+	local ns = load(nil)
+	M.OpenAH()
+	ns.Watch.Add("Khorium Ore", 200000)
+	addAuctions("Khorium Ore", 23426, 2, 150000)
+	search("Khorium Ore"); M.Tick(3)
+	eq(ns.Watch.List()[1].buy, true)
+	M.now = M.now + 5 * 3600
+	local w = ns.Watch.List()[1]
+	eq(w.buy, false, "stale BUY"); eq(w.wasUnder, true)
+	ns.UI.Show("watch")
+	assert(ns.UI.GetPage("watch").list.rows[1].cells[5]:GetText():find("was under"), "stale status text")
+	local before = ns.Alerts.unseen
+	ns.Alerts.Notify("deals", { "x" }, false, "x")
+	eq(ns.Alerts.unseen, before, "badge counted while open")
+end)
+
+---------------------------------------------------------------------------
 -- Interface
 ---------------------------------------------------------------------------
 local function populate(ns)

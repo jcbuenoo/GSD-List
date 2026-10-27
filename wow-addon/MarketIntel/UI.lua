@@ -730,6 +730,7 @@ local function BuildWatch(page)
 		{ title = "Status", width = 110, text = function(e)
 			if not e.latest then return "|cff909090not seen yet|r" end
 			if e.buy then return "|cff00ff00BUY|r" end
+			if e.wasUnder then return "|cffffd200was under, " .. ns.FormatAge(time() - e.latest.t) .. " ago|r" end
 			return e.max and "above limit" or "tracking"
 		end, sort = function(e) return e.buy and 0 or 1 end, defaultAsc = true },
 		{ title = "Seen", width = 50, justify = "RIGHT", text = function(e)

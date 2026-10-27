@@ -43,8 +43,13 @@ function AD.PostPrice(key)
 	local advice
 
 	if not cheapest then
-		advice = { price = floor(ref * (1 + s.postPremiumPct / 100)), action = "PREMIUM",
-			reason = "Nobody else is selling it. Post above the normal price." }
+		-- only your own auctions are up (or none at all)
+		local latest = ns.History.GetLatest(key)
+		local base = ref or (latest and latest.min)
+		if not base then return nil end
+		advice = { price = floor(base * (1 + s.postPremiumPct / 100)), action = "PREMIUM",
+			reason = ref and "Nobody else is selling it. Post above the normal price."
+				or "Nobody else is selling it. No normal price yet, so this is based on the last price seen." }
 	elseif floorPrice and cheapest - s.postUndercut < floorPrice then
 		-- The market is below what this item is normally worth. If only a little
 		-- cheap stock sits there (by units, not auctions), price against the first
@@ -107,7 +112,8 @@ end
 function AD.EvaluateFlip(key, now)
 	local s = ns.settings
 	local cur = ns.current[key]
-	if not cur or not cur.levels or #cur.levels == 0 or now - cur.t > s.flipMaxAge * 60 then return nil end
+	-- a partial search may have missed cheaper auctions on pages you did not see
+	if not cur or not cur.full or not cur.levels or #cur.levels == 0 or now - cur.t > s.flipMaxAge * 60 then return nil end
 	local ref = ns.History.GetReference(key, now)
 	if not ref then return nil end
 	local depth = ns.Analysis.GetDepth(key, now)

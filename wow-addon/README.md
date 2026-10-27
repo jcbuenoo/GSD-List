@@ -18,7 +18,7 @@ It never buys, posts or cancels anything: it records prices and makes suggestion
 
 ## Install
 
-1. Download `dist/MarketIntel-1.2.0.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
+1. Download `dist/MarketIntel-1.3.0.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
 2. Restart the game. If the addon shows as "out of date", tick **Load out of date AddOns** on the character-select AddOns screen. To see your client's interface number, run `/dump select(4, GetBuildInfo())`. Then update the `## Interface:` line in `MarketIntel.toc` to match.
 
 ## Getting data
@@ -174,6 +174,7 @@ Extra tools:
 - `lua5.1 tests/layout_export.lua <dir>` then `node tests/render_layout.js <dir>`: works out where every element sits on screen, draws each tab in Chromium as a screenshot, and reports clipped text, overlapping controls and anything outside the window.
 - `lua5.1 tests/bench_scan.lua`: how long each frame takes while a 40,000-auction full scan is saved.
 - `lua5.1 tests/bench_storage.lua`: saved-data size after a month of full scans.
+- `lua5.1 tests/fuzz.lua [runs] [steps]`: randomized stress test (random searches, scans, relogs, mail, clicks and settings), checking saved data and that nothing ever buys.
 
 ## Known limitations
 
