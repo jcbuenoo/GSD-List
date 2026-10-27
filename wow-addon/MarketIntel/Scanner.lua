@@ -3,12 +3,13 @@
 -- Passive capture: every search made by you, Auctionator, TSM or the default UI
 -- (including Auctionator's full scan) is read from the results list and turned
 -- into price snapshots. Pages of the same search are merged before saving.
--- Active scan: /mi scan or the Scan button searches each watchlist item.
+-- Active scans: the watchlist scan (/mi scan) and the BoE snipe scan (/mi snipe)
+-- send a list of searches, page by page, at the speed the auction house allows.
 local _, ns = ...
 
 local S = {}
 ns.Scanner = S
-ns.current = {} -- this session's detail per item key: ladder, own listings, cheap stock
+ns.current = {} -- this session's detail per item key: price levels, own listings, cheap stock
 
 local ipairs, pairs = ipairs, pairs
 local PAGE_SIZE = NUM_AUCTION_ITEMS_PER_PAGE or 50
@@ -31,13 +32,13 @@ end
 ---------------------------------------------------------------------------
 -- Returns a listing table, false for rows we deliberately skip, or nil if the row is not loaded yet.
 local function ReadRow(i)
-	local name, _, count, quality, _, _, _, _, _, buyout, _, _, _, owner, _, _, itemId = GetAuctionItemInfo("list", i)
+	local name, _, count, quality, _, level, _, _, _, buyout, _, _, _, owner, _, _, itemId = GetAuctionItemInfo("list", i)
 	if not name or not itemId then return nil end
 	if not buyout or buyout <= 0 or not count or count <= 0 then return false end -- bid-only
 	if (quality or 0) < ns.settings.minQuality then return false end
 	local key = ns.ItemKeyFromLink(GetAuctionItemLink("list", i)) or tostring(itemId)
 	return {
-		key = key, name = name, quality = quality, count = count, buyout = buyout,
+		key = key, name = name, quality = quality, count = count, buyout = buyout, level = level, itemId = itemId,
 		unit = buyout / count, owner = owner, mine = owner ~= nil and (owner == ns.playerName or owner == ns.playerFullName),
 	}
 end
@@ -64,15 +65,22 @@ local function ScheduleCommit()
 	commitTimer = ns.After(IDLE_COMMIT, function() S.Commit(capture) end)
 end
 
-local function CommitItem(key, listings, full, now, newDeals, focus)
+local function CommitItem(key, listings, full, now, newDeals, focus, newSnipes)
 	local first = listings[1]
 	local snap = ns.Analysis.BuildSnapshot(listings, full, now) -- sorts listings by unit price
 	local ref = ns.History.GetReference(key, now)
 	local watch = ns.Watch.Get(first.name)
+	-- BoE snipes first: an auction that is a snipe is reported only as a snipe, not also as a deal
+	local sniped = ns.Snipe.Check(key, listings, now, newSnipes)
 	for _, deal in ipairs(ns.Analysis.FindDeals(key, listings, ref, watch and watch.max)) do
-		if ns.Analysis.AddDeal(deal, first.name, now) then newDeals[#newDeals + 1] = deal end
+		if not sniped[ns.Analysis.DealId(key, deal)] then
+			if ns.Analysis.AddDeal(deal, first.name, now) then newDeals[#newDeals + 1] = deal end
+		end
 	end
-	if full then ns.Analysis.PruneDeals(key, listings) end
+	if full then
+		ns.Analysis.PruneDeals(key, listings)
+		ns.Snipe.Prune(key, listings)
+	end
 
 	local mine, cheapQty, cheapCost = 0, 0, 0
 	for _, l in ipairs(listings) do
@@ -82,8 +90,9 @@ local function CommitItem(key, listings, full, now, newDeals, focus)
 			cheapCost = cheapCost + l.buyout
 		end
 	end
+	local levels = ns.Analysis.BuildLadder(listings, 40, true)
 	ns.current[key] = {
-		t = now, ladder = ns.Analysis.BuildLadder(listings, 5), mine = mine,
+		t = now, ladder = { levels[1], levels[2], levels[3], levels[4], levels[5] }, levels = levels, mine = mine,
 		cheapQty = cheapQty, cheapCost = cheapCost, ref = ref, full = full,
 	}
 	ns.History.AddSnapshot(key, first.name, first.quality, snap, focus)
@@ -112,11 +121,13 @@ local function SaveCapture(cap, yield)
 	local total = cap.total or seen
 	local full = not cap.aborted and seen + missing >= total and missing <= total * MISSING_TOLERANCE
 	local now = cap.updatedAt or time() -- when the results arrived, not when we save them
-	local newDeals = {}
+	local newDeals, newSnipes = {}, {}
 	for i, key in ipairs(keys) do
-		CommitItem(key, byKey[key], full, now, newDeals, not cap.getAll)
+		CommitItem(key, byKey[key], full, now, newDeals, not cap.getAll, newSnipes)
 		if i % 20 == 0 then ns.Checkpoint(yield) end
 	end
+	-- snipes first: if both fire at once, the on-screen alert goes to the snipe
+	ns.Snipe.Alert(newSnipes)
 	ns.Analysis.Alert(newDeals)
 	ns.Fire("MI_DATA_UPDATED")
 	ns.Fire("MI_CAPTURE_SAVED", #keys, full, cap.getAll)
@@ -282,33 +293,36 @@ ns.On("AUCTION_HOUSE_CLOSED", function()
 end)
 
 ---------------------------------------------------------------------------
--- Active watchlist scan
+-- Active scans: a list of searches, each read page by page
 ---------------------------------------------------------------------------
-S.status = {} -- for the UI: scanning, index, count, fullScan, fullScanProgress
+S.status = {} -- for the UI: scanning, label, index, count, fullScan, fullScanProgress
 
 local QUERY_TIMEOUT = 6
 
-function S.ScanWatchlist()
-	if not ahOpen then return ns.Print("open the auction house first.") end
-	if S.status.scanning then return ns.Print("a watchlist scan is already running.") end
-	if capture and capture.processing then return ns.Print("wait for the full scan to finish.") end
-	local names = {}
-	for _, w in pairs(ns.db.watch) do names[#names + 1] = w.name end
-	table.sort(names)
-	if #names == 0 then return ns.Print("your watchlist is empty. Add items with /mi watch <item>.") end
+-- queries = { { name, minLevel, maxLevel, rarity, exact }, ... }
+-- onDone(cancelled) runs at the end.
+function S.RunQueries(label, queries, onDone)
+	if not ahOpen then ns.Print("open the auction house first.") return false end
+	if S.status.scanning then ns.Print("a %s is already running.", S.status.label or "scan") return false end
+	if capture and capture.processing then ns.Print("wait for the full scan to finish.") return false end
+	if #queries == 0 then return false end
 
 	local st = S.status
-	st.scanning, st.index, st.count, st.page = true, 1, #names, 0
+	st.scanning, st.label, st.index, st.count, st.page = true, label, 1, #queries, 0
 	st.cancel = nil
 	local waiting, sentAt, gotAt = false, 0, nil
-	local startDeals = #ns.deals
 	ns.Fire("MI_SCAN_PROGRESS")
 
+	local function finish(cancelled)
+		if capture then S.Commit(capture) end
+		st.scanning, st.onUpdate = nil, nil
+		if onDone then onDone(cancelled) end
+		ns.Fire("MI_SCAN_PROGRESS")
+	end
 	st.onUpdate = function() if waiting then gotAt = GetTime() end end
 	ns.RunTask(function()
 		if st.cancel or not ahOpen then
-			st.scanning, st.onUpdate = nil, nil
-			ns.Fire("MI_SCAN_PROGRESS")
+			finish(true)
 			return true
 		end
 		local now = GetTime()
@@ -320,31 +334,46 @@ function S.ScanWatchlist()
 			local _, total = GetNumAuctionItems("list")
 			if gotAt and (st.page + 1) * PAGE_SIZE < (total or 0) then
 				st.page = st.page + 1
+				st.pages = math.ceil((total or 0) / PAGE_SIZE)
 			else
-				st.index, st.page = st.index + 1, 0
-				ns.Fire("MI_SCAN_PROGRESS")
+				st.index, st.page, st.pages = st.index + 1, 0, nil
 			end
+			ns.Fire("MI_SCAN_PROGRESS")
 			gotAt = nil
 		end
 		if st.index > st.count then
-			if capture then S.Commit(capture) end
-			st.scanning, st.onUpdate = nil, nil
-			ns.Print("watchlist scan finished: %d items, %d new deals.", st.count, #ns.deals - startDeals)
-			ns.Fire("MI_SCAN_PROGRESS")
+			finish(false)
 			return true
 		end
 		if CanSendAuctionQuery() then
-			QueryAuctionItems(names[st.index], nil, nil, st.page, false, nil, false, true)
+			local q = queries[st.index]
+			QueryAuctionItems(q.name or "", q.minLevel, q.maxLevel, st.page, false, q.rarity, false, q.exact and true or false)
 			waiting, sentAt, gotAt = true, now, nil
 		end
 		return false
+	end)
+	return true
+end
+
+function S.ScanWatchlist()
+	local names = {}
+	for _, w in pairs(ns.db.watch) do names[#names + 1] = w.name end
+	table.sort(names)
+	if #names == 0 then return ns.Print("your watchlist is empty. Add items with /mi watch <item>.") end
+	local queries = {}
+	for i, name in ipairs(names) do queries[i] = { name = name, exact = true } end
+	local startDeals = #ns.deals
+	S.RunQueries("watchlist scan", queries, function(cancelled)
+		if not cancelled then
+			ns.Print("watchlist scan finished: %d items, %d new deals.", #names, #ns.deals - startDeals)
+		end
 	end)
 end
 
 function S.StopScan(silent)
 	if S.status.scanning then
 		S.status.cancel = true
-		if not silent then ns.Print("watchlist scan stopped.") end
+		if not silent then ns.Print("%s stopped.", S.status.label or "scan") end
 	end
 end
 

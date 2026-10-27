@@ -2,15 +2,23 @@
 
 Market Intel records auction house prices over time and uses them to flag bargains and crowded markets. It works alongside **Auctionator** and **TradeSkillMaster** and doesn't replace either one.
 
-It adds three things:
+It never buys, posts or cancels anything: it records prices and makes suggestions.
 
 - **Price history:** a daily record of every item you see on the AH, with charts, averages, trend, volatility and the best weekday to sell or buy.
 - **Deal alerts:** listings far below the item's normal price, plus your own watchlist price targets.
+- **BoE snipe:** blue/epic gear (required level 15-55) that sells regularly in your region, listed well below its normal price.
+- **Flip finder:** cheap auctions you could buy and relist, with profit, return and risk.
+- **Posting price advisor:** what to post at (or whether to hold), per item.
 - **Market depth warnings:** whether a market is Flooded, Crowded, Normal or Thin, plus price-war and price-wall detection.
+- **Crafting profit** for the recipes you starred in TSM, including what current deals on materials do to the profit.
+- **Sales ledger:** sales, purchases, expired and cancelled auctions read from your mail.
+- **Minimap button, CSV export, and big on-screen alerts** for the best finds.
+
+`MarketIntel/README.txt` (inside the zip) is the short player guide; this file also covers how it works and the test tools.
 
 ## Install
 
-1. Download `dist/MarketIntel-1.1.0.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
+1. Download `dist/MarketIntel-1.2.0.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
 2. Restart the game. If the addon shows as "out of date", tick **Load out of date AddOns** on the character-select AddOns screen. To see your client's interface number, run `/dump select(4, GetBuildInfo())`. Then update the `## Interface:` line in `MarketIntel.toc` to match.
 
 ## Getting data
@@ -84,6 +92,53 @@ It also flags:
 
 **Depth tab:** filter to *items in my bags* or *only warnings*. Hovering a row shows the 5 cheapest price levels, plus how many units sit below 90% of normal and what buying them would cost. `/mi bags` prints the same check in chat.
 
+### BoE snipe
+Every search and full scan is checked for gear that:
+
+- is rare (blue) or epic, with a required level of 15-55;
+- TSM says sells at least 0.1 a day per auction house in your region (`DBRegionSoldPerDay`);
+- is listed at or below 65% of its normal price: TSM `DBMarket`, then `DBRegionMarketAvg`, then Market Intel's own history.
+
+The **Scan BoE** button (or `/mi snipe`) searches that whole category page by page: rare, then epic, levels 15-55. An auction that is a snipe is reported only as a snipe, not also as a deal. Snipes always get the big alert. Without TSM's region data nothing qualifies, unless you untick *Snipes need TSM sale rate*.
+
+### Flip finder
+For each item searched in the last 2 hours, it works out how many of the cheapest auctions you could buy and relist just under the next price (never above the normal price):
+
+- **Profit** is counted after the 5% AH cut and 24-hour deposits.
+- **Shown only if** it makes at least 5g and a 15% return.
+- **Never more than the market normally holds**, or a week of TSM's regional sales.
+- **Risk** is Low with sales evidence (TSM or your own ledger), Medium without, and High in crowded markets. Flooded markets are skipped.
+
+It only suggests; clicking a row just searches the item.
+
+### Posting price advisor
+Shown as **Post at** on tooltips and the Depth tab, and with `/mi post <item>`:
+
+- **Undercut** the cheapest auction by 1 copper in a normal market.
+- **Hold** when the cheapest price is below 85% of normal. A little cheap stock (at most 15% of the units listed, or 3 units) is ignored, and you undercut the next fair price instead.
+- **Hold** in a Flooded market unless your ledger shows you sell at least 60% of what you post.
+- **Post high** in a Thin market, or 10% above normal when nobody else is selling.
+- **Vendor it** when the auction price after the cut is no better than a vendor's.
+
+### Crafting profit
+- **Learning recipes:** opening a profession window records each recipe's materials and result (Enchanting too).
+- **Which recipes:** only recipes starred as favourites in TSM's crafting window are evaluated. Market Intel reads them from TSM's saved data. If they can't be read, right-click recipes in the Crafting tab to star them there instead.
+- **Material cost:** TSM's `MatPrice` (which knows vendor prices), else the normal price, else the latest market value, else Auctionator.
+- **Sale price:** the cheapest current auction of the result, minus the 5% cut.
+- **Deals:** when a deal lowers a material's cost, the Deals tab and the alert show what that recipe would make.
+
+### Sales ledger
+When you open your mailbox, auction mail is recorded once each: sold, won, expired and cancelled.
+
+- **Sold:** sale price, AH cut and buyer. The quantity comes from your own auction list (open the AH *Auctions* tab before collecting).
+- **Won and returned:** quantities come from the attached items.
+- **Summary:** sales, AH cut, purchases, net profit and sell-through for 7 days, 30 days or everything. Kept for 180 days.
+
+### Alerts, minimap, CSV
+- **Alerts:** every find prints in chat and plays a sound (both sounds can be chosen). Big finds also show a raid-warning style message on screen and flash the taskbar icon. Big finds are BoE snipes, watchlist hits and deals saving 20g or more.
+- **Minimap button:** left-click opens the window, right-click opens Settings, drag moves it. A red number shows alerts since you last opened the window.
+- **CSV export:** every list has a **CSV** button. It opens the data as CSV, ready to copy with Ctrl+C into a spreadsheet.
+
 ## Commands
 
 ```
@@ -94,6 +149,10 @@ It also flags:
 /mi scan                 scan the watchlist (AH must be open)
 /mi bags                 depth check for your bags
 /mi import               copy Auctionator's price history
+/mi snipe                BoE snipe scan (AH open)
+/mi flips | crafting | ledger
+/mi post <item>          suggested posting price
+/mi minimap              show or hide the minimap button
 /mi stats | purge | reset
 ```
 
@@ -132,4 +191,7 @@ The tests use a mock client, so these details are written from the TBC Classic /
 - Map IDs used to detect the neutral AH: 1446 Tanaris, 1434 Stranglethorn, 1452 Winterspring.
 - Auctionator's `MultiSearchExact` API. If it's missing, row clicks fall back to the default Browse search.
 - Auctionator's saved price format (`AUCTIONATOR_PRICE_DATABASE`) and its day numbering, used by the import.
+- Where TSM keeps starred recipes in `TradeSkillMasterDB` (Market Intel looks for any key containing "favorite"), and that TSM's `DBRegionSoldPerDay` and `MatPrice` sources exist for your Classic region.
+- Mail functions (`GetInboxInvoiceInfo`, `GetInboxItem`) and the profession window functions return values in the order expected.
+- Whether the auction house's quality filter is "exactly this quality" or "this quality and above". The snipe scan searches rare and epic separately, so both cases are covered.
 - The layout was drawn and checked in a browser with a similar font, not in the game itself. WoW's font is a little different, so very long item names may cut off at slightly different points.

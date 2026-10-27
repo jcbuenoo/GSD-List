@@ -51,17 +51,20 @@ function A.BuildSnapshot(listings, full, now)
 end
 
 -- Cheapest price levels, for the tooltip and History tab: { {unit, qty, auctions}, ... }
-function A.BuildLadder(sorted, levels)
+-- skipMine: leave out your own auctions (they are not competition).
+function A.BuildLadder(sorted, levels, skipMine)
 	local ladder = {}
 	for _, l in ipairs(sorted) do
-		local unit = floor(l.unit + 0.5)
-		local top = ladder[#ladder]
-		if top and top.unit == unit then
-			top.qty = top.qty + l.count
-			top.auc = top.auc + 1
-		else
-			if #ladder >= (levels or 5) then break end
-			ladder[#ladder + 1] = { unit = unit, qty = l.count, auc = 1 }
+		if not (skipMine and l.mine) then
+			local unit = floor(l.unit + 0.5)
+			local top = ladder[#ladder]
+			if top and top.unit == unit then
+				top.qty = top.qty + l.count
+				top.auc = top.auc + 1
+			else
+				if #ladder >= (levels or 5) then break end
+				ladder[#ladder + 1] = { unit = unit, qty = l.count, auc = 1 }
+			end
 		end
 	end
 	return ladder
@@ -77,6 +80,7 @@ local MAX_DEALS = 200
 local function DealId(key, l)
 	return format("%s|%d|%d|%s", key, l.buyout, l.count, l.owner or "?")
 end
+A.DealId = DealId
 
 -- Find listings worth buying. ref = normal unit price (may be nil), watchMax = watch limit (may be nil).
 function A.FindDeals(key, listings, ref, watchMax)
@@ -137,32 +141,30 @@ function A.ClearDeals()
 	wipe(dealIndex)
 end
 
-local lastSound = 0
 function A.Alert(deals)
 	if #deals == 0 then return end
-	local s = ns.settings
-	if s.alertChat then
-		local shown = 0
-		for _, d in ipairs(deals) do
-			if shown >= 5 then
-				ns.Print("...and %d more deals. Type /mi deals to see them all.", #deals - shown)
-				break
-			end
-			shown = shown + 1
-			local link = ns.GetItemLinkForKey(d.key, d.name)
-			if d.reason == "watch" then
-				ns.Print("|cff00ff00WATCH|r %s x%d at %s each (your max %s)", link, d.count,
-					ns.FormatMoney(d.unit), ns.FormatMoney(d.watchMax))
-			else
-				ns.Print("|cff00ff00DEAL|r %s x%d at %s each, %s of normal %s (save %s)", link, d.count,
-					ns.FormatMoney(d.unit), ns.FormatPct(d.pct), ns.FormatMoney(d.ref), ns.FormatMoney(d.profit))
-			end
+	local lines, best = {}, 0
+	for _, d in ipairs(deals) do
+		local link = ns.GetItemLinkForKey(d.key, d.name)
+		local line
+		if d.reason == "watch" then
+			line = string.format("|cff00ff00WATCH|r %s x%d at %s each (your max %s)", link, d.count,
+				ns.FormatMoney(d.unit), ns.FormatMoney(d.watchMax))
+		else
+			line = string.format("|cff00ff00DEAL|r %s x%d at %s each, %s of normal %s (save %s)", link, d.count,
+				ns.FormatMoney(d.unit), ns.FormatPct(d.pct), ns.FormatMoney(d.ref), ns.FormatMoney(d.profit))
 		end
+		-- deals on materials for your starred recipes
+		local impact = ns.Crafting and ns.Crafting.DealImpact(d)
+		if impact then
+			d.craft = impact
+			line = line .. string.format(" -> %s craft now %s", impact.name, ns.FormatMoney(impact.profit))
+		end
+		lines[#lines + 1] = line
+		best = math.max(best, d.profit or 0, d.reason == "watch" and ns.settings.strongAlertMin or 0)
 	end
-	if s.alertSound and GetTime() - lastSound > 3 then
-		lastSound = GetTime()
-		PlaySound(SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959, "Master")
-	end
+	ns.Alerts.Notify("deals", lines, best >= ns.settings.strongAlertMin,
+		string.format("%d new deal%s", #deals, #deals == 1 and "" or "s"))
 end
 
 ---------------------------------------------------------------------------

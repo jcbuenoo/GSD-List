@@ -30,9 +30,15 @@ function M.reset()
 	M.auctions, M.list, M.listTotal, M.ahThrottle, M.lastQuery = {}, {}, 0, 0, -100
 	M.mapID, M.bags, M.itemInfo, M.focus, M.shift, M.popup, M.ahOpen = 1453, {}, {}, nil, nil, nil, nil
 	M.pendingUpdate, M.insertedLink = nil, nil
+	M.mail, M.owned, M.tradeskill, M.craft = {}, {}, nil, nil
+	M.raidWarnings, M.flashes, M.cursor = {}, 0, { 0, 0 }
+	_G.TradeSkillMasterDB = nil
 	_G.AuctionFrame, _G.Auctionator, _G.TSM_API, _G.TooltipDataProcessor = nil, nil, nil, nil
 	_G.AUCTIONATOR_PRICE_DATABASE = nil
-	if M.UIParent then M.UIParent._children = {} end
+	if M.UIParent then
+		M.UIParent._children = {}
+		M.MakeMinimap()
+	end
 	M.install()
 end
 
@@ -85,6 +91,55 @@ function M.install()
 		return info.name, "|cffffffff|Hitem:" .. id .. "::::::::70:::::|h[" .. info.name .. "]|h|r", info.quality
 	end
 	_G.GetItemIcon = function(id) return "Interface\\Icons\\Item" .. tostring(id) end
+	_G.GetItemInfoInstant = function(item)
+		local id = tonumber(tostring(item):match("(%d+)"))
+		local info = id and M.itemInfo and M.itemInfo[id]
+		return id, nil, nil, info and info.equipLoc or "", nil, nil, nil
+	end
+	_G.RaidWarningFrame = {}
+	_G.ChatTypeInfo = { RAID_WARNING = { r = 1, g = 0.3, b = 0.1 } }
+	_G.RaidNotice_AddMessage = function(_, text) table.insert(M.raidWarnings, text) end
+	_G.FlashClientIcon = function() M.flashes = M.flashes + 1 end
+	_G.GetCursorPosition = function() return M.cursor[1], M.cursor[2] end
+	_G.ChatFontNormal = {}
+	_G.CLOSE = "Close"
+	_G.AUCTION_SOLD_MAIL_SUBJECT = "Auction successful: %s"
+	_G.AUCTION_WON_MAIL_SUBJECT = "Auction won: %s"
+	_G.AUCTION_EXPIRED_MAIL_SUBJECT = "Auction expired: %s"
+	_G.AUCTION_REMOVED_MAIL_SUBJECT = "Auction cancelled: %s"
+	-- mailbox: M.mail = { { subject, money, daysLeft, invoice = {type, item, player, bid, buyout, deposit, cut}, item = {name, id, count} } }
+	_G.GetInboxNumItems = function() return #M.mail end
+	_G.GetInboxHeaderInfo = function(i)
+		local m = M.mail[i]
+		return nil, nil, m.sender or "Auction House", m.subject, m.money or 0, 0, m.daysLeft or 29.9, m.item and 1 or nil
+	end
+	_G.GetInboxInvoiceInfo = function(i)
+		local inv = M.mail[i].invoice
+		if not inv then return nil end
+		return inv.type, inv.item, inv.player, inv.bid, inv.buyout, inv.deposit, inv.cut, 0, 0
+	end
+	_G.GetInboxItem = function(i)
+		local it = M.mail[i].item
+		if not it then return nil end
+		return it.name, it.id, "tex", it.count, 1, true
+	end
+	-- profession window: M.tradeskill = { line, recipes = { { name, spell, item = {id, name}, made, reagents = { {id, name, count} } } } }
+	_G.GetNumTradeSkills = function() return M.tradeskill and #M.tradeskill.recipes or 0 end
+	_G.GetTradeSkillLine = function() return M.tradeskill and M.tradeskill.line end
+	_G.GetTradeSkillInfo = function(i) local r = M.tradeskill.recipes[i]; return r.name, r.header and "header" or "optimal" end
+	_G.GetTradeSkillRecipeLink = function(i) return string.format("|cffffd000|Henchant:%d|h[%s]|h|r", M.tradeskill.recipes[i].spell, M.tradeskill.recipes[i].name) end
+	_G.GetTradeSkillItemLink = function(i) local it = M.tradeskill.recipes[i].item; return it and M.Link(it.id, it.name) end
+	_G.GetTradeSkillNumMade = function(i) local m = M.tradeskill.recipes[i].made or 1; return m, m end
+	_G.GetTradeSkillNumReagents = function(i) return #(M.tradeskill.recipes[i].reagents or {}) end
+	_G.GetTradeSkillReagentInfo = function(i, j) local r = M.tradeskill.recipes[i].reagents[j]; return r.name, "tex", r.count, 0 end
+	_G.GetTradeSkillReagentItemLink = function(i, j) local r = M.tradeskill.recipes[i].reagents[j]; return M.Link(r.id, r.name) end
+	_G.GetNumCrafts = function() return M.craft and #M.craft.recipes or 0 end
+	_G.GetCraftDisplaySkillLine = function() return "Enchanting" end
+	_G.GetCraftInfo = function(i) local r = M.craft.recipes[i]; return r.name, nil, "optimal" end
+	_G.GetCraftItemLink = function(i) return string.format("|cffffd000|Henchant:%d|h[%s]|h|r", M.craft.recipes[i].spell, M.craft.recipes[i].name) end
+	_G.GetCraftNumReagents = function(i) return #M.craft.recipes[i].reagents end
+	_G.GetCraftReagentInfo = function(i, j) local r = M.craft.recipes[i].reagents[j]; return r.name, "tex", r.count, 0 end
+	_G.GetCraftReagentItemLink = function(i, j) local r = M.craft.recipes[i].reagents[j]; return M.Link(r.id, r.name) end
 
 	_G.C_Container = {
 		GetContainerNumSlots = function(bag) return M.bags[bag] and #M.bags[bag] or 0 end,
@@ -97,12 +152,15 @@ function M.install()
 		assert(M.ahOpen, "QueryAuctionItems while AH closed")
 		assert(M.gt - M.lastQuery >= M.ahThrottle, "QueryAuctionItems sent while throttled")
 		M.lastQuery = M.gt
-		table.insert(M.queries, { name = name, page = page or 0, getAll = getAll, exact = exact })
+		table.insert(M.queries, { name = name, page = page or 0, getAll = getAll, exact = exact, minLevel = minLevel, maxLevel = maxLevel, rarity = rarity })
 		local matches = {}
 		for _, a in ipairs(M.auctions) do
 			local n = a.name:lower()
 			local q = (name or ""):lower()
-			if q == "" or (exact and n == q) or (not exact and n:find(q, 1, true)) then
+			local lvl = a.level or 70
+			if (q == "" or (exact and n == q) or (not exact and n:find(q, 1, true)))
+				and (not minLevel or lvl >= minLevel) and (not maxLevel or lvl <= maxLevel)
+				and (not rarity or (a.quality or 1) == rarity) then -- treated as exact quality, the stricter case
 				matches[#matches + 1] = a
 			end
 		end
@@ -116,11 +174,14 @@ function M.install()
 		end
 		M.pendingUpdate = true
 	end
-	_G.GetNumAuctionItems = function() return #M.list, M.listTotal end
-	_G.GetAuctionItemInfo = function(_, i)
-		local a = M.list[i]
+	_G.GetNumAuctionItems = function(which)
+		if which == "owner" then return #M.owned, #M.owned end
+		return #M.list, M.listTotal
+	end
+	_G.GetAuctionItemInfo = function(which, i)
+		local a = (which == "owner" and M.owned or M.list)[i]
 		if not a or a.uncached then return nil end
-		return a.name, "tex", a.count, a.quality or 1, true, 70, nil, 1, 1, a.buyout, 0, nil, nil, a.owner,
+		return a.name, "tex", a.count, a.quality or 1, true, a.level or 70, nil, a.minBid or 1, 1, a.buyout, 0, nil, nil, a.owner,
 			a.owner, 0, a.id, true
 	end
 	_G.GetAuctionItemLink = function(_, i)
@@ -157,7 +218,8 @@ for m in ([[SetSize SetWidth SetHeight GetWidth GetHeight SetPoint ClearAllPoint
 	SetBackdropColor SetBackdropBorderColor CreateFontString CreateTexture SetText GetText SetJustifyH SetJustifyV
 	SetWordWrap SetTexture SetColorTexture SetHighlightTexture RegisterForClicks SetAutoFocus ClearFocus SetFocus
 	HasFocus SetChecked GetChecked LockHighlight UnlockHighlight GetName GetParent GetChildren Click SetValue GetValue
-	AddLine AddDoubleLine SetOwner SetHyperlink GetItem SetTextColor SetFontObject SetAlpha SetShown]]):gmatch("%S+") do
+	AddLine AddDoubleLine SetOwner SetHyperlink GetItem SetTextColor SetFontObject SetAlpha SetShown GetPoint
+	SetMultiLine HighlightText SetScrollChild SetFrameLevel GetCenter GetEffectiveScale]]):gmatch("%S+") do
 	REAL[m] = true
 end
 M.usedMethods = {}
@@ -177,6 +239,7 @@ local ONLY = {
 	LockHighlight = { Button = true, CheckButton = true }, UnlockHighlight = { Button = true, CheckButton = true },
 	Click = { Button = true, CheckButton = true }, SetValue = { Slider = true }, GetValue = { Slider = true },
 	SetScript = { NotTexture = true }, RegisterEvent = { NotTexture = true },
+	SetMultiLine = { EditBox = true }, HighlightText = { EditBox = true }, SetScrollChild = { ScrollFrame = true },
 }
 
 -- Unknown keys behave like the real client: nil (so `if frame.Method then` works and calling a
@@ -311,6 +374,20 @@ function Widget.SetValue(w, v)
 	end
 end
 function Widget.GetValue(w) return w._value or 0 end
+function Widget.GetCenter(w)
+	local r = M.Rect(w)
+	if not r then return 0, 0 end
+	return (r.l + r.r) / 2, (r.b + r.t) / 2
+end
+function Widget.GetEffectiveScale() return 1 end
+function Widget.SetMultiLine(w, v) rawset(w, "_multi", v and true or false) end
+-- WoW places a scroll child at the scroll frame's top left by itself
+function Widget.SetScrollChild(w, child)
+	w._scrollChild = child
+	if not child._anchors or not next(child._anchors) then child:SetPoint("TOPLEFT", w, "TOPLEFT", 0, 0) end
+	if (child._h or 0) == 0 then child._h = w._h end
+	if not child._parent then child._parent = w end
+end
 function Widget.SetTexture(w, t)
 	assert(t == nil or type(t) == "string" or type(t) == "number", "SetTexture given " .. type(t))
 	w._texture = t
@@ -336,9 +413,22 @@ local TEMPLATES = {
 	end,
 	UIPanelButtonTemplate = true, UICheckButtonTemplate = function(w) w:SetSize(32, 32) end, InputBoxTemplate = true,
 	UIPanelCloseButton = function(w) w:SetSize(32, 32) end, BackdropTemplate = true,
+	UIPanelScrollFrameTemplate = function(w)
+		local bar = NewWidget("Slider", (w._name or "anon") .. "ScrollBar", w)
+		bar:SetPoint("TOPLEFT", w, "TOPRIGHT", 6, -16)
+		bar:SetPoint("BOTTOMLEFT", w, "BOTTOMRIGHT", 6, 16)
+		bar:SetWidth(16)
+	end,
 }
 
 M.UIParent = setmetatable({ _kind = "Frame", _name = "UIParent", _children = {}, _shown = true, _scripts = {}, _w = 1920, _h = 1080 }, Widget)
+
+function M.MakeMinimap()
+	local mm = CreateFrame("Frame", "Minimap", M.UIParent)
+	mm:SetSize(140, 140)
+	mm:SetPoint("TOPRIGHT", -20, -20)
+	return mm
+end
 
 _G.CreateFrame = function(kind, name, parent, template)
 	if template then
@@ -502,6 +592,7 @@ function M.ExportLayout(root)
 			end
 			if w._color then e[#e + 1] = string.format('"color":[%g,%g,%g,%g]', unpack(w._color)) end
 			if w._backdrop then e[#e + 1] = '"backdrop":true' end
+			if w._multi then e[#e + 1] = '"multi":true' end
 			if w._texture then e[#e + 1] = '"texture":true' end
 			if w._checked then e[#e + 1] = '"checked":true' end
 			if w._locked then e[#e + 1] = '"locked":true' end

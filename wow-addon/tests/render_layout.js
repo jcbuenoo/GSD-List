@@ -62,7 +62,11 @@ function render(items) {
       inner = colorize(e.text || '');
     }
     if (e.kind === 'CheckButton') inner = e.checked ? '&#10003;' : '';
-    if (e.kind === 'EditBox') inner = colorize(e.text || '');
+    if (e.kind === 'EditBox') {
+      inner = colorize(e.text || '');
+      if (e.multi) style += 'white-space:pre;overflow:hidden;font-family:monospace;height:auto;';
+    }
+    if (e.name === 'Minimap') style += 'border-radius:50%;background:#2a4a2a;border:3px solid #777;';
     if (e.kind === 'Texture') {
       if (e.color) style += `background:rgba(${e.color.slice(0, 3).map(c => Math.round(c * 255)).join(',')},${e.color[3]});`;
       else if (e.texture) cls.push('icon');
@@ -95,7 +99,7 @@ function render(items) {
       const byId = {};
       items.forEach(e => (byId[e.id] = e));
       const ancestor = (a, b) => { for (let p = byId[b.parent]; p; p = byId[p.parent]) if (p === a) return true; return false; };
-      const win = items.find(e => e.name === 'MarketIntelFrame');
+      const win = items.find(e => e.name === 'MarketIntelExportFrame') || items.find(e => e.name === 'MarketIntelFrame');
       const inWindow = e => { for (let p = e; p; p = byId[p.parent]) if (p === win) return true; return false; };
       const box = el => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
       // actual rendered extent of a text element (not its box)
@@ -124,6 +128,7 @@ function render(items) {
         if (!b) continue;
         nodes.push({ e, b, label: isText ? el.textContent.slice(0, 40) : `[${e.kind} ${e.text || ''}]` });
         const wb = { x: win.x + 8, y: win.y + 8, w: win.w - 16, h: win.h - 16 };
+        if (e.multi) continue;
         if (b.x < wb.x - 0.5 || b.y < wb.y - 0.5 || b.x + b.w > wb.x + wb.w + 0.5 || b.y + b.h > wb.y + wb.h + 0.5) {
           issues.outside.push(nodes[nodes.length - 1].label);
         }

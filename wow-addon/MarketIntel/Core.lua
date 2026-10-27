@@ -2,7 +2,7 @@
 local ADDON, ns = ...
 
 ns.name = ADDON or "MarketIntel"
-ns.version = "1.1.0"
+ns.version = "1.2.0"
 
 local floor, format, tostring, tonumber, type, pairs = math.floor, string.format, tostring, tonumber, type, pairs
 
@@ -24,6 +24,30 @@ ns.DEFAULTS = {
 	floodSellers = 15,
 	crowdSellers = 8,
 	useTSMFallback = true,   -- use TSM DBMarket as the normal price while our own history is too short
+	-- alerts
+	alertRaidWarning = true, -- big finds: message in the middle of the screen
+	alertFlash = true,       -- big finds: flash the taskbar icon when the game is in the background
+	strongAlertMin = 200000, -- copper; deals saving at least this (20g) get the big alert
+	alertSoundChoice = "auction",
+	strongSound = "raidwarning",
+	minimapHide = false,
+	minimapAngle = 200,
+	-- posting advisor
+	postUndercut = 1,        -- copper below the cheapest auction
+	postFloorPct = 85,       -- never suggest posting below this % of the normal price (hold instead)
+	postPremiumPct = 10,     -- % above normal when nobody else is selling
+	-- flip finder
+	flipMinProfit = 50000,   -- copper (5g)
+	flipMinROI = 15,         -- % return on the gold spent
+	flipMaxAge = 120,        -- minutes; only use searches this recent
+	-- BoE snipe
+	snipeEnabled = true,
+	snipePct = 65,           -- % of the normal price
+	snipeMinLevel = 15,
+	snipeMaxLevel = 55,
+	snipeMinQuality = 3,     -- 3 = rare (blue), 4 = epic
+	snipeMinSold = 0.1,      -- TSM region sold per day
+	snipeRequireSaleRate = true,
 }
 
 local DB_VERSION = 2 -- version 2: compact base-36 history strings
@@ -341,6 +365,10 @@ local HELP = {
 	"/mi watch <item link or name> [max price, e.g. 12g] - add to watchlist",
 	"/mi unwatch <item link or name> - remove from watchlist",
 	"/mi scan - scan your watchlist (auction house must be open)",
+	"/mi snipe - BoE snipe scan: rare/epic gear below its normal price (auction house open)",
+	"/mi flips | crafting | ledger - open those tabs",
+	"/mi post <item> - suggested posting price",
+	"/mi minimap - show or hide the minimap button",
 	"/mi bags - market depth check for items in your bags",
 	"/mi stats - how much data is stored",
 	"/mi import - copy Auctionator's price history into Market Intel",
@@ -374,8 +402,24 @@ function ns.HandleSlash(input)
 	cmd = (cmd or ""):lower()
 	if cmd == "" then
 		ns.UI.Toggle()
-	elseif cmd == "deals" or cmd == "depth" or cmd == "history" or cmd == "settings" then
+	elseif cmd == "deals" or cmd == "depth" or cmd == "history" or cmd == "settings" or cmd == "flips"
+		or cmd == "crafting" or cmd == "ledger" then
 		ns.UI.Show(cmd)
+	elseif cmd == "snipe" and rest == "" and ns.Scanner.IsAuctionHouseOpen() then
+		ns.UI.Show("snipe")
+		ns.Snipe.Scan()
+	elseif cmd == "snipe" then
+		ns.UI.Show("snipe")
+	elseif cmd == "post" then
+		local name = ns.ParseItemAndPrice(rest)
+		local key = name and ns.History.FindKeyByName(name)
+		local a = key and ns.Advisor.PostPrice(key)
+		if not a then return ns.Print("no price data for %s yet. Search it on the auction house first.", tostring(name)) end
+		ns.Print("%s: %s at %s each (you get %s). %s", name, ns.Advisor.ACTION_TEXT[a.action], ns.FormatMoney(a.price),
+			ns.FormatMoney(a.net), a.reason)
+	elseif cmd == "minimap" then
+		ns.settings.minimapHide = not ns.settings.minimapHide
+		ns.Minimap.Refresh()
 	elseif cmd == "watch" and rest == "" then
 		ns.UI.Show("watch")
 	elseif cmd == "watch" then

@@ -13,6 +13,13 @@ read_globals = {
 	"GetAuctionItemInfo", "GetAuctionItemLink", "GetNumAuctionItems", "TooltipDataProcessor", "Enum",
 	"GameTooltip", "ItemRefTooltip", "BackdropTemplateMixin", "AUCTIONATOR_PRICE_DATABASE", "ChatEdit_InsertLink", "FauxScrollFrame_OnVerticalScroll",
 	"FauxScrollFrame_Update", "FauxScrollFrame_GetOffset", "IsShiftKeyDown", "UISpecialFrames", "AuctionFrame",
-	"_G", "debugprofilestop",
+	"_G", "debugprofilestop", "RaidNotice_AddMessage", "RaidWarningFrame", "ChatTypeInfo", "FlashClientIcon",
+	"GetItemInfoInstant", "AUCTION_SOLD_MAIL_SUBJECT", "AUCTION_WON_MAIL_SUBJECT", "AUCTION_EXPIRED_MAIL_SUBJECT",
+	"AUCTION_REMOVED_MAIL_SUBJECT", "GetInboxNumItems", "GetInboxHeaderInfo", "GetInboxInvoiceInfo", "GetInboxItem",
+	"GetNumTradeSkills", "GetTradeSkillLine", "GetTradeSkillInfo", "GetTradeSkillRecipeLink", "GetTradeSkillItemLink",
+	"GetTradeSkillNumMade", "GetTradeSkillNumReagents", "GetTradeSkillReagentInfo", "GetTradeSkillReagentItemLink",
+	"GetNumCrafts", "GetCraftDisplaySkillLine", "GetCraftInfo", "GetCraftItemLink", "GetCraftNumReagents",
+	"GetCraftReagentInfo", "GetCraftReagentItemLink", "TradeSkillMasterDB", "Minimap", "GetCursorPosition",
+	"ChatFontNormal", "CLOSE",
 }
 self = false

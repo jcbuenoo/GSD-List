@@ -34,6 +34,15 @@ function ns.AddTooltipLines(tooltip, link)
 		tooltip:AddDoubleLine("Depth: " .. ns.Analysis.FormatRating(d.rating), detail, 1, 1, 1, 1, 1, 1)
 		if d.war then tooltip:AddLine("|cffff5050Price war: the minimum keeps dropping.|r") end
 	end
+	local advice = ns.Advisor.PostPrice(key)
+	if advice then
+		tooltip:AddDoubleLine("Post at: " .. ns.Advisor.ACTION_TEXT[advice.action], ns.FormatMoney(advice.price), 1, 1, 1, 1, 1, 1)
+	end
+	local sales = ns.Ledger.ItemStats(ns.History.GetName(key))
+	if sales then
+		tooltip:AddDoubleLine("Your sales (30d)", format("%d sold, %d expired (%d%%)", sales.sold, sales.expired,
+			sales.sellThrough * 100 + 0.5), 1, 1, 1, 1, 1, 1)
+	end
 	local cur = ns.current[key]
 	if cur and cur.mine and cur.mine > 0 then
 		tooltip:AddLine(format("|cffaaaaaaYou have %d listed.|r", cur.mine))

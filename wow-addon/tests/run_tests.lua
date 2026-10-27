@@ -675,6 +675,304 @@ test("bag report and slash commands", function()
 end)
 
 ---------------------------------------------------------------------------
+-- 1.2 features
+---------------------------------------------------------------------------
+-- The addon must never buy or post: these fail the test if ever called.
+local function forbidBuying()
+	_G.PlaceAuctionBid = function() error("addon tried to buy an auction") end
+	_G.PostAuction = function() error("addon tried to post an auction") end
+	_G.StartAuction = function() error("addon tried to post an auction") end
+end
+
+test("ledger: reads sold/bought/expired/cancelled mail once, with totals and sell-through", function()
+	local ns = load(nil)
+	M.OpenAH()
+	addAuctions("Primal Might", 23571, 3, 800000); search("Primal Might"); M.Tick(3)
+	M.owned = { { name = "Primal Might", count = 2, buyout = 1700000, minBid = 1600000, quality = 1, id = 23571 } }
+	M.FireEvent("AUCTION_OWNED_LIST_UPDATE")
+	M.CloseAH()
+	M.mail = {
+		{ subject = "Auction successful: Primal Might", money = 1615000, daysLeft = 29.5,
+			invoice = { type = "seller", item = "Primal Might", player = "Buyerguy", bid = 1700000, buyout = 1700000, deposit = 0, cut = 85000 } },
+		{ subject = "Auction won: Khorium Ore", daysLeft = 29.0, item = { name = "Khorium Ore", id = 23426, count = 5 },
+			invoice = { type = "buyer", item = "Khorium Ore", player = "Seller1", bid = 1000000, buyout = 1000000 } },
+		{ subject = "Auction expired: Primal Might", daysLeft = 28.0, item = { name = "Primal Might", id = 23571, count = 1 } },
+		{ subject = "Auction cancelled: Fel Lotus", daysLeft = 27.0, item = { name = "Fel Lotus", id = 22794, count = 4 } },
+		{ subject = "Hello from a friend", money = 100, daysLeft = 3 },
+	}
+	M.FireEvent("MAIL_INBOX_UPDATE")
+	M.Tick(1)
+	local entries = ns.Ledger.Entries()
+	eq(#entries, 4, "auction mails recorded")
+	local sold
+	for _, e in ipairs(entries) do if e.type == "sold" then sold = e end end
+	eq(sold.qty, 2, "quantity from your own auction list"); eq(sold.net, 1615000); eq(sold.cut, 85000); eq(sold.who, "Buyerguy")
+	-- reopening the mailbox later (days left has dropped) records nothing new
+	M.now = M.now + 1800
+	for _, m in ipairs(M.mail) do m.daysLeft = m.daysLeft - 1800 / 86400 end
+	M.FireEvent("MAIL_INBOX_UPDATE"); M.Tick(1)
+	eq(#ns.Ledger.Entries(), 4, "mail counted twice")
+	local sm = ns.Ledger.Summary(30)
+	eq(sm.sales, 1700000); eq(sm.spent, 1000000); eq(sm.profit, 615000); eq(sm.expired, 1); eq(sm.cancelled, 1)
+	near(sm.sellThrough, 0.5, 0.001)
+	local st = ns.Ledger.ItemStats("Primal Might")
+	eq(st.sold, 1); eq(st.expired, 1); eq(st.avgUnit, 850000)
+end)
+
+test("posting advisor: undercut, hold, skip a thin undercut, post high, vendor", function()
+	local ns = load(nil)
+	M.OpenAH()
+	recordDays(ns, "Primal Might", 23571, 5, 1000000)
+	local function post(listings)
+		M.auctions = {}
+		for _, l in ipairs(listings) do addAuctions("Primal Might", 23571, l[2], l[1], { sellers = l[3] or 3 }) end
+		M.now = M.now + 1900
+		search("Primal Might"); M.Tick(3)
+		return ns.Advisor.PostPrice("23571")
+	end
+	local a = post({ { 990000, 6 } })
+	eq(a.action, "UNDERCUT"); eq(a.price, 989999); eq(a.net, math.floor(989999 * 0.95))
+	a = post({ { 600000, 6 } })
+	eq(a.action, "HOLD", "60% of normal"); eq(a.price, 1000000)
+	a = post({ { 500000, 1 }, { 980000, 6 } })
+	eq(a.action, "UNDERCUT", "one cheap unit"); eq(a.price, 979999)
+	-- one cheap auction of many units is real competition: hold
+	M.auctions = {}
+	addAuctions("Primal Might", 23571, 1, 500000, { count = 50 })
+	addAuctions("Primal Might", 23571, 6, 980000)
+	M.now = M.now + 1900
+	search("Primal Might"); M.Tick(3)
+	a = ns.Advisor.PostPrice("23571")
+	eq(a.action, "HOLD", "50 cheap units")
+	a = post({ { 1300000, 1, 1 } })
+	eq(a.action, "PREMIUM", "thin market above normal"); eq(a.price, 1299999)
+	-- vendor check
+	M.itemInfo[23571] = { name = "Primal Might", sellPrice = 2000000 }
+	_G.GetItemInfo = (function(orig) return function(item, ...)
+		local id = tonumber(tostring(item):match("(%d+)"))
+		if id == 23571 then return "Primal Might", M.Link(23571, "Primal Might"), 1, 70, 70, "Trade Goods", "", 20, "", "tex", 2000000 end
+		return orig(item, ...)
+	end end)(_G.GetItemInfo)
+	a = post({ { 990000, 6 } })
+	eq(a.action, "VENDOR")
+	-- /mi post prints the advice
+	SlashCmdList.MARKETINTEL("post Primal Might")
+	assert(chatHas("Primal Might: .*Vendor it"), "slash post")
+end)
+
+test("flip finder suggests buying cheap auctions to relist, never buys", function()
+	forbidBuying()
+	local ns = load(nil)
+	M.OpenAH()
+	recordDays(ns, "Living Ruby", 23436, 5, 1000000)
+	M.auctions = {}
+	addAuctions("Living Ruby", 23436, 3, 500000)         -- 3 cheap
+	addAuctions("Living Ruby", 23436, 6, 980000, { sellers = 4 }) -- then the normal wall
+	search("Living Ruby"); M.Tick(3)
+	local flips = ns.Advisor.FindFlips(M.now)
+	eq(#flips, 1)
+	local f = flips[1]
+	eq(f.qty, 3); eq(f.auctions, 3); eq(f.cost, 1500000); eq(f.resale, 979999)
+	eq(f.profit, math.floor(979999 * 3 * 0.95 - 1500000))
+	assert(f.roi > 0.8, "roi")
+	-- too little profit -> no suggestion
+	ns.settings.flipMinProfit = 20000000
+	eq(#ns.Advisor.FindFlips(M.now), 0)
+	ns.settings.flipMinProfit = 50000
+	-- old searches are ignored
+	eq(#ns.Advisor.FindFlips(M.now + 3 * 3600), 0, "stale listings")
+	-- the tab works and clicking only searches
+	ns.UI.Show("flips")
+	local list = ns.UI.GetPage("flips").list
+	eq(#list.data, 1)
+	list.rows[1]:Click()
+	eq(M.queries[#M.queries].name, "Living Ruby")
+end)
+
+local function gearSetup()
+	M.itemInfo[30001] = { name = "Blade of Twinking", equipLoc = "INVTYPE_WEAPON" }
+	M.itemInfo[30002] = { name = "Sixty Helm", equipLoc = "INVTYPE_HEAD" }
+	M.itemInfo[30003] = { name = "Rare Pattern", equipLoc = "" }
+	M.itemInfo[30004] = { name = "Slow Seller Ring", equipLoc = "INVTYPE_FINGER" }
+	_G.TSM_API = { GetCustomPriceValue = function(source, item)
+		local id = tonumber(item:match("i:(%d+)"))
+		local market = { [30001] = 2000000, [30002] = 3000000, [30003] = 900000, [30004] = 500000 }
+		local sold = { [30001] = 0.35, [30002] = 0.5, [30003] = 1, [30004] = 0.02 }
+		if source == "dbmarket" then return market[id] end
+		if source == "dbregionsoldperday" then return sold[id] end
+		return nil
+	end }
+end
+
+test("BoE snipe: blue/epic gear lvl 15-55 that sells, under 65% of TSM market, big alert", function()
+	forbidBuying()
+	local ns = load(nil)
+	gearSetup()
+	M.OpenAH()
+	table.insert(M.auctions, { name = "Blade of Twinking", id = 30001, count = 1, buyout = 1100000, owner = "Cheap", quality = 3, level = 29 }) -- 55%
+	table.insert(M.auctions, { name = "Blade of Twinking", id = 30001, count = 1, buyout = 1900000, owner = "Normal", quality = 3, level = 29 })
+	table.insert(M.auctions, { name = "Sixty Helm", id = 30002, count = 1, buyout = 900000, owner = "X", quality = 4, level = 60 })       -- level too high
+	table.insert(M.auctions, { name = "Rare Pattern", id = 30003, count = 1, buyout = 100000, owner = "X", quality = 3, level = 30 })     -- not gear
+	table.insert(M.auctions, { name = "Slow Seller Ring", id = 30004, count = 1, buyout = 100000, owner = "X", quality = 3, level = 30 }) -- sells too slowly
+	table.insert(M.auctions, { name = "Blade of Twinking", id = 30001, count = 1, buyout = 500000, owner = M.player, quality = 3, level = 29 }) -- mine
+	QueryAuctionItems("", nil, nil, 0, false, nil, true, false)
+	M.Tick(5)
+	eq(#ns.snipes, 1, "snipes")
+	local sn = ns.snipes[1]
+	eq(sn.owner, "Cheap"); eq(sn.level, 29); near(sn.pct, 0.55, 0.001); eq(sn.source, "TSM market"); eq(sn.sold, 0.35)
+	assert(chatHas("BOE SNIPE"), "chat alert")
+	assert(M.raidWarnings[1] and M.raidWarnings[1]:find("Blade of Twinking"), "screen alert")
+	eq(M.flashes, 1, "taskbar flash")
+	-- without TSM sale data nothing qualifies unless the requirement is turned off
+	ns.Snipe.Clear()
+	_G.TSM_API = nil
+	M.now = M.now + 3600
+	QueryAuctionItems("Blade of Twinking", nil, nil, 0, false, nil, false, false); M.Tick(3)
+	eq(#ns.snipes, 0)
+end)
+
+test("BoE snipe scan searches rare and epic, levels 15-55, every page", function()
+	local ns = load(nil)
+	gearSetup()
+	M.OpenAH()
+	M.ahThrottle = 0.5
+	for i = 1, 70 do
+		table.insert(M.auctions, { name = "Blade of Twinking", id = 30001, count = 1, buyout = 1900000 + i, owner = "S" .. i, quality = 3, level = 29 })
+	end
+	table.insert(M.auctions, { name = "Blade of Twinking", id = 30001, count = 1, buyout = 1000000, owner = "Lucky", quality = 3, level = 29 })
+	table.insert(M.auctions, { name = "Epic Thing", id = 30002, count = 1, buyout = 1000000, owner = "Lucky", quality = 4, level = 50 })
+	ns.UI.Show("snipe")
+	ns.UI.GetPage("snipe").scanBtn:Click()
+	M.Tick(1)
+	assert(ns.UI.GetPage("snipe").scanBtn:GetText():find("Stop"), "button while scanning")
+	M.Tick(15)
+	assert(not ns.Scanner.status.scanning, "scan did not finish")
+	local rarities, pages = {}, 0
+	for _, q in ipairs(M.queries) do
+		eq(q.minLevel, 15); eq(q.maxLevel, 55)
+		rarities[q.rarity] = true
+		pages = pages + 1
+	end
+	assert(rarities[3] and rarities[4], "rare and epic passes")
+	eq(pages, 3, "2 pages of blues + 1 of epics")
+	eq(#ns.snipes, 2, "both cheap items found")
+	assert(chatHas("BoE snipe scan finished: 2 snipes"), "finish message")
+end)
+
+test("crafting: TSM-starred recipes only, profit, and deals that make a craft profitable", function()
+	local ns = load(nil)
+	_G.TradeSkillMasterDB = {
+		["c@Tester - Dreamscythe@internalData@favoriteCrafts"] = { ["c:31080"] = true },
+		["g@ @global@other"] = { x = 1 },
+	}
+	M.tradeskill = { line = "Jewelcrafting", recipes = {
+		{ name = "Gems", header = true },
+		{ name = "Bold Living Ruby", spell = 31080, item = { id = 24027, name = "Bold Living Ruby" },
+			reagents = { { id = 23436, name = "Living Ruby", count = 1 } } },
+		{ name = "Smooth Golden Draenite", spell = 25255, item = { id = 23114, name = "Smooth Golden Draenite" },
+			reagents = { { id = 23112, name = "Golden Draenite", count = 1 } } },
+	} }
+	M.FireEvent("TRADE_SKILL_SHOW"); M.Tick(1)
+	eq(ns.db.recipes[31080].prof, "Jewelcrafting")
+	eq(ns.db.recipes[31080].r["23436"], 1)
+	M.OpenAH()
+	recordDays(ns, "Living Ruby", 23436, 5, 1000000)
+	recordDays(ns, "Bold Living Ruby", 24027, 5, 1000000)
+	M.auctions = {}
+	addAuctions("Living Ruby", 23436, 4, 1000000)
+	addAuctions("Bold Living Ruby", 24027, 4, 1000000)
+	search("Living Ruby"); search("Bold Living Ruby"); M.Tick(3)
+	local list = ns.Crafting.List(false)
+	eq(#list, 1, "only the TSM favourite")
+	eq(list[1].fav, "TSM")
+	near(list[1].profit, 1000000 * 0.95 - 1000000, 1, "loses the AH cut")
+	-- a Living Ruby deal makes the starred craft profitable, and the alert says so
+	M.chat = {}
+	addAuctions("Living Ruby", 23436, 1, 500000, { owner = "Cheapo" })
+	M.now = M.now + 1900
+	search("Living Ruby"); M.Tick(3)
+	assert(chatHas("Bold Living Ruby craft now"), "deal alert mentions the craft")
+	eq(ns.deals[1].craft.name, "Bold Living Ruby")
+	list = ns.Crafting.List(false)
+	near(list[1].dealProfit, 1000000 * 0.95 - 500000, 1)
+	-- all recipes view, star a recipe in Market Intel
+	eq(#ns.Crafting.List(true), 2)
+	ns.Crafting.ToggleStar(25255)
+	eq(#ns.Crafting.List(false), 2)
+	ns.UI.Show("crafting")
+	assert(ns.UI.GetPage("crafting").source:GetText():find("read"), "TSM favourites read")
+end)
+
+test("crafting: no TSM data falls back to Market Intel stars; enchanting recipes are learnt", function()
+	local ns = load(nil)
+	M.craft = { recipes = { { name = "Enchant Weapon - Mongoose", spell = 27984,
+		reagents = { { id = 22449, name = "Large Prismatic Shard", count = 6 }, { id = 22446, name = "Greater Planar Essence", count = 6 } } } } }
+	M.FireEvent("CRAFT_SHOW"); M.Tick(1)
+	eq(ns.db.recipes[27984].prof, "Enchanting")
+	eq(#ns.Crafting.List(false), 0)
+	ns.Crafting.ToggleStar(27984)
+	local list = ns.Crafting.List(false)
+	eq(#list, 1); eq(list[1].fav, "Market Intel"); eq(list[1].missing, true, "no reagent prices yet")
+	ns.UI.Show("crafting")
+	assert(ns.UI.GetPage("crafting").source:GetText():find("not found"), "TSM missing note")
+end)
+
+test("minimap button: opens window, settings on right-click, drag, alert badge, hide", function()
+	local ns = load(nil)
+	local b = ns.Minimap.GetButton()
+	assert(b and b:IsShown(), "no minimap button")
+	b:GetScript("OnClick")(b, "LeftButton")
+	assert(ns.UI.IsShown(), "left click opens")
+	b:GetScript("OnClick")(b, "RightButton")
+	assert(ns.UI.GetPage("settings"):IsShown(), "right click opens settings")
+	ns.UI.Toggle()
+	-- drag to the top of the minimap
+	local cx, cy = Minimap:GetCenter()
+	M.cursor = { cx, cy + 100 }
+	b:GetScript("OnDragStart")(b)
+	b:GetScript("OnUpdate")(b)
+	b:GetScript("OnDragStop")(b)
+	near(ns.settings.minimapAngle, 90, 0.5)
+	-- alerts show a count until the window is opened
+	ns.Alerts.Notify("deals", { "a", "b" }, false, "x")
+	eq(b.badge:GetText(), "2")
+	ns.UI.Show("deals")
+	eq(b.badge:GetText(), "")
+	SlashCmdList.MARKETINTEL("minimap")
+	assert(not b:IsShown(), "hide")
+	b:GetScript("OnEnter")(b)
+end)
+
+test("strong alerts only for big deals; CSV export escapes and opens from every tab", function()
+	local ns = load(nil)
+	M.OpenAH()
+	recordDays(ns, "Netherweave Cloth", 21877, 5, 30000)
+	addAuctions("Netherweave Cloth", 21877, 1, 10000, { count = 5, owner = "Cheap" }) -- saves 10g: normal alert
+	search("Netherweave Cloth"); M.Tick(3)
+	eq(#ns.deals, 1); eq(#M.raidWarnings, 0, "small deal must not raid-warn")
+	recordDays(ns, "Primal Might", 23571, 5, 1000000)
+	M.auctions = {}
+	addAuctions("Primal Might", 23571, 1, 400000, { owner = "Cheap" }) -- saves 60g
+	search("Primal Might"); M.Tick(3)
+	eq(#M.raidWarnings, 1, "big deal raid warning")
+	local csv = ns.Export.ToCSV({ "a", "b", "c" }, { { 'He said "hi"', "x,y", 1.5 } })
+	eq(csv, 'a,b,c\n"He said ""hi""","x,y",1.5000')
+	-- every CSV button opens the export window with a header row
+	for _, tab in ipairs({ "deals", "snipe", "flips", "crafting", "ledger", "history" }) do
+		ns.UI.Show(tab)
+		for _, c in ipairs(ns.UI.GetPage(tab)._children) do
+			if c._kind == "Button" and (c:GetText() == "CSV" or c:GetText() == "CSV all") then
+				c:Click()
+				local f = ns.Export.GetFrame()
+				assert(f:IsShown(), tab .. " export not shown")
+				assert(f.edit:GetText():find("^[%w_]+,"), tab .. " export has no header")
+				f:Hide()
+			end
+		end
+	end
+end)
+
+---------------------------------------------------------------------------
 -- Interface
 ---------------------------------------------------------------------------
 local function populate(ns)
@@ -694,7 +992,7 @@ test("UI: every tab builds and fills with data", function()
 	populate(ns)
 	SlashCmdList.MARKETINTEL("")
 	assert(ns.UI.IsShown(), "window not shown")
-	for _, tab in ipairs({ "deals", "depth", "history", "watch", "settings" }) do
+	for _, tab in ipairs({ "deals", "snipe", "flips", "depth", "history", "crafting", "ledger", "watch", "settings" }) do
 		ns.UI.Show(tab)
 		assert(ns.UI.GetPage(tab):IsShown(), tab .. " hidden")
 	end
@@ -807,7 +1105,7 @@ test("UI: watchlist editing, bad price, right-click remove, scan button", functi
 	M.ahThrottle = 1
 	page.scanBtn:Click()
 	assert(ns.Scanner.status.scanning, "scan not started")
-	assert(page.scanBtn:GetText():find("Stop %(1/2%)"), "button label right after starting: " .. page.scanBtn:GetText())
+	assert(page.scanBtn:GetText():find("Stop scan %(1/2%)"), "button label right after starting: " .. page.scanBtn:GetText())
 	M.Tick(1.1)
 	assert(page.scanBtn:GetText():find("Stop"), "button label while scanning")
 	page.scanBtn:Click()
@@ -894,9 +1192,12 @@ test("UI: window opens beside the auction house and remembers where it was dragg
 	ns.UI.ahButton:Click()
 	local f = ns.UI.GetFrame()
 	local point, rel, relPoint, x = f:GetPoint()
-	eq(point, "TOPLEFT"); eq(rel, AuctionFrame); eq(relPoint, "TOPRIGHT"); eq(x, 120)
+	eq(point, "TOPLEFT"); eq(rel, AuctionFrame); eq(relPoint, "TOPRIGHT"); eq(x, 10)
 	local r, ah = M.Rect(f), M.Rect(AuctionFrame)
 	assert(r.l >= ah.r, "window covers the auction house")
+	local mm, btn = M.Rect(Minimap), M.Rect(ns.UI.ahButton)
+	assert(r.r <= mm.l, "window covers the minimap")
+	assert(r.t <= btn.b, "window covers the Market Intel button")
 	-- drag it somewhere: position saved and restored next time
 	f:ClearAllPoints(); f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -60)
 	f:GetScript("OnDragStop")(f)
@@ -906,14 +1207,16 @@ test("UI: window opens beside the auction house and remembers where it was dragg
 	eq(ns.settings.windowPos[4], -60)
 	-- settings boxes explain themselves on hover
 	ns.UI.Show("settings")
-	local eb = ns.UI.GetPage("settings").controls[5]
+	local eb
+	for _, c in ipairs(ns.UI.GetPage("settings").controls) do if c.def.tip and not eb then eb = c end end
 	eb:GetScript("OnEnter")(eb)
 	assert(GameTooltip.lines[2] and #GameTooltip.lines[2] > 20, "no setting tooltip")
 end)
 
 test("UI: empty states render without data", function()
 	local ns = load(nil)
-	for _, tab in ipairs({ "deals", "depth", "history", "watch", "settings" }) do ns.UI.Show(tab) end
+	for _, tab in ipairs({ "deals", "snipe", "flips", "depth", "history", "crafting", "ledger", "watch", "settings" }) do ns.UI.Show(tab) end
+	assert(ns.UI.GetPage("ledger").summary:GetText():find("Open your mailbox"), "empty ledger hint")
 	local h = ns.UI.GetPage("history")
 	eq(h.title:GetText(), "Select an item")
 	assert(h.graph.empty:GetText():find("No history"), "graph empty text")

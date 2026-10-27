@@ -1,4 +1,5 @@
--- Market Intel: main window with Deals, Depth, History, Watchlist and Settings tabs.
+-- Market Intel: main window with Deals, BoE Snipe, Flips, Depth, History, Crafting,
+-- Ledger, Watchlist and Settings tabs.
 local _, ns = ...
 
 local UI = {}
@@ -6,13 +7,16 @@ ns.UI = UI
 
 local floor, max, min, format, ipairs, pairs, tonumber = math.floor, math.max, math.min, string.format, ipairs, pairs, tonumber
 local ROW_H = 18
-local WIDTH, HEIGHT = 740, 480
+local WIDTH, HEIGHT = 880, 500
 local BACKDROP_TEMPLATE = BackdropTemplateMixin and "BackdropTemplate" or nil
 
 local frame
 local pages, tabButtons = {}, {}
-local TAB_ORDER = { "deals", "depth", "history", "watch", "settings" }
-local TAB_TITLES = { deals = "Deals", depth = "Depth", history = "History", watch = "Watchlist", settings = "Settings" }
+local TAB_ORDER = { "deals", "snipe", "flips", "depth", "history", "crafting", "ledger", "watch", "settings" }
+local TAB_TITLES = {
+	deals = "Deals", snipe = "BoE Snipe", flips = "Flips", depth = "Depth", history = "History",
+	crafting = "Crafting", ledger = "Ledger", watch = "Watchlist", settings = "Settings",
+}
 local currentTab = "deals"
 local listCount = 0
 
@@ -238,13 +242,22 @@ local function IconFor(e) return ns.GetItemIcon(e.key) or "Interface\\Icons\\INV
 local function BuildDeals(page)
 	local info = Text(page, "GameFontHighlightSmall")
 	info:SetPoint("TOPLEFT", 0, 0)
-	info:SetWidth(560)
+	info:SetWidth(700)
 	page.info = info
 
-	Button(page, "Clear", 80, function()
+	Button(page, "Clear", 70, function()
 		ns.Analysis.ClearDeals()
 		UI.Refresh()
 	end):SetPoint("TOPRIGHT", 0, 2)
+	Button(page, "CSV", 50, function()
+		local rows = {}
+		for _, d in ipairs(ns.deals) do
+			rows[#rows + 1] = { d.name, ns.ItemIDFromKey(d.key), d.unit, d.ref, d.pct, d.count, d.profit, d.owner, d.reason,
+				d.craft and d.craft.name, d.craft and d.craft.profit, date("%Y-%m-%d %H:%M", d.found) }
+		end
+		ns.Export.Show("Deals", { "item", "itemID", "unit_copper", "normal_copper", "pct_of_normal", "qty", "saving_copper",
+			"seller", "reason", "helps_recipe", "recipe_profit_copper", "found" }, rows)
+	end):SetPoint("TOPRIGHT", -74, 2)
 
 	local now = function() return time() end
 	page.list = UI.CreateList(page, {
@@ -258,6 +271,9 @@ local function BuildDeals(page)
 		{ title = "Save", width = 85, justify = "RIGHT", text = function(e) return ns.FormatMoney(e.profit) end, sort = function(e) return e.profit or 0 end },
 		{ title = "Seller", width = 95, text = function(e) return e.owner or "?" end, sort = function(e) return e.owner or "" end, defaultAsc = true },
 		{ title = "Found", width = 45, justify = "RIGHT", text = function(e) return ns.FormatAge(now() - e.found) end, sort = function(e) return e.found end },
+		{ title = "Craft", width = 110, text = function(e)
+			return e.craft and ("|cff40ff40" .. ns.FormatMoney(e.craft.profit) .. "|r") or ""
+		end, sort = function(e) return e.craft and e.craft.profit or -1 end },
 	}, 18, {
 		icons = IconFor, sortCol = 6,
 		onClick = function(e, button)
@@ -271,6 +287,10 @@ local function BuildDeals(page)
 			ShowItemTooltip(row, e.key)
 			GameTooltip:AddLine(" ")
 			GameTooltip:AddLine(e.reason == "watch" and "Below your watchlist price." or "Priced well below normal.", 0, 1, 0)
+			if e.craft then
+				GameTooltip:AddLine(format("At this price, crafting %s makes %s (was %s).", e.craft.name,
+					ns.FormatMoney(e.craft.profit), ns.FormatMoney(e.craft.before)), 0.4, 1, 0.4, true)
+			end
 			GameTooltip:AddLine("Click: search it on the auction house. Shift-click: link.", 0.7, 0.7, 0.7)
 			GameTooltip:Show()
 		end,
@@ -313,6 +333,14 @@ local function BuildDepth(page)
 			return e.d.ratio and format("%.1fx", e.d.ratio) or "--"
 		end, sort = function(e) return e.d.ratio or 0 end },
 		{ title = "Seen", width = 45, justify = "RIGHT", text = function(e) return ns.FormatAge(e.d.age) end, sort = function(e) return -e.d.age end },
+		{ title = "Post at", width = 95, justify = "RIGHT", text = function(e)
+			e.post = e.post or ns.Advisor.PostPrice(e.key) or false
+			if not e.post then return "" end
+			return (e.post.action == "HOLD" and "|cffff9900hold|r " or "") .. ns.FormatMoney(e.post.price)
+		end, sort = function(e)
+			e.post = e.post or ns.Advisor.PostPrice(e.key) or false
+			return e.post and e.post.price or 0
+		end },
 	}, 18, {
 		icons = IconFor, sortCol = 2, sortAsc = true,
 		onClick = function(e) UI.ShowHistory(e.key) end,
@@ -320,6 +348,11 @@ local function BuildDepth(page)
 			ShowItemTooltip(row, e.key)
 			GameTooltip:AddLine(" ")
 			GameTooltip:AddLine(e.d.advice, 1, 0.82, 0, true)
+			local post = ns.Advisor.PostPrice(e.key)
+			if post then
+				GameTooltip:AddDoubleLine("Post at: " .. ns.Advisor.ACTION_TEXT[post.action], ns.FormatMoney(post.price), 1, 1, 1, 1, 1, 1)
+				GameTooltip:AddLine(post.reason, 0.8, 0.8, 0.8, true)
+			end
 			local cur = ns.current[e.key]
 			if cur and cur.ladder then
 				GameTooltip:AddLine("Cheapest price levels:", 0.7, 0.7, 0.7)
@@ -481,9 +514,17 @@ local function BuildHistory(page)
 	search:SetScript("OnTextChanged", function(_, userInput) if userInput then page:Update() end end)
 	page.search = search
 	table.insert(UI.linkTargets, search)
-	local hint = Text(page, "GameFontDisableSmall")
-	hint:SetPoint("LEFT", search, "RIGHT", 6, 0)
-	hint:SetText("search")
+	Button(page, "CSV all", 60, function()
+		local rows, now = {}, time()
+		for _, key in ipairs(ns.History.Search("", nil)) do
+			local st = ns.History.GetStats(key, now)
+			local ref = ns.History.GetReference(key, now)
+			local d = ns.Analysis.GetDepth(key, now)
+			rows[#rows + 1] = { ns.History.GetName(key), ns.ItemIDFromKey(key), st.latest and st.latest.min, st.latest and st.latest.mkt,
+				st.avg7 and floor(st.avg7), st.avg30 and floor(st.avg30), ref and floor(ref), d and d.rating, st.latest and date("%Y-%m-%d %H:%M", st.latest.t) }
+		end
+		ns.Export.Show("All items", { "item", "itemID", "min_copper", "market_copper", "avg7_copper", "avg30_copper", "normal_copper", "depth", "last_seen" }, rows)
+	end):SetPoint("LEFT", search, "RIGHT", 8, 0)
 
 	page.list = UI.CreateList(page, {
 		{ title = "Item", width = 182, text = function(e) return ItemLabel(e.key) end, sort = function(e) return e.name end, defaultAsc = true },
@@ -517,20 +558,20 @@ local function BuildHistory(page)
 	end
 	page.ranges = ranges
 
-	page.graph = CreateGraph(detail, 410, 120)
+	page.graph = CreateGraph(detail, 540, 120)
 	page.graph:SetPoint("TOPLEFT", 0, -44)
 
 	local left = Text(detail, "GameFontHighlightSmall")
 	left:SetPoint("TOPLEFT", page.graph, "BOTTOMLEFT", 0, -34)
-	left:SetWidth(205)
+	left:SetWidth(265)
 	left:SetJustifyV("TOP")
 	local right = Text(detail, "GameFontHighlightSmall")
 	right:SetPoint("TOPLEFT", left, "TOPRIGHT", 5, 0)
-	right:SetWidth(200)
+	right:SetWidth(270)
 	right:SetJustifyV("TOP")
 	local advice = Text(detail, "GameFontNormalSmall")
 	advice:SetPoint("BOTTOMLEFT", 0, 4)
-	advice:SetWidth(410)
+	advice:SetWidth(540)
 	advice:SetJustifyV("BOTTOM")
 	page.leftText, page.rightText, page.advice = left, right, advice
 
@@ -542,6 +583,17 @@ local function BuildHistory(page)
 	end)
 	watchBtn:SetPoint("TOPRIGHT", -130, 0)
 	page.watchBtn = watchBtn
+	local csvBtn = Button(detail, "CSV", 50, function()
+		local item = page.selected and ns.History.GetItem(page.selected)
+		if not item then return end
+		local rows = {}
+		for _, d in ipairs(ns.History.GetDaily(item, time())) do
+			rows[#rows + 1] = { date("%Y-%m-%d", d.t), d.min, floor(d.mkt + 0.5), d.qty and floor(d.qty + 0.5), d.auc and floor(d.auc + 0.5), d.sel and floor(d.sel + 0.5) }
+		end
+		ns.Export.Show("History of " .. (item.n or "item"), { "date", "min_copper", "market_copper", "qty", "auctions", "sellers" }, rows)
+	end)
+	csvBtn:SetPoint("TOPRIGHT", -204, 0)
+	page.csvBtn = csvBtn
 
 	function page:Select(key)
 		page.selected = key
@@ -561,9 +613,11 @@ local function BuildHistory(page)
 			advice:SetText("Prices are recorded whenever you, Auctionator or TSM search the auction house. Run a full scan for complete coverage.")
 			page.graph:SetSeries({}, page.range)
 			watchBtn:Hide()
+			csvBtn:Hide()
 			return
 		end
 		watchBtn:Show()
+		csvBtn:Show()
 		watchBtn:SetText(ns.Watch.Get(item.n) and "Unwatch" or "Watch")
 		local now = time()
 		title:SetText(ItemLabel(key))
@@ -704,7 +758,7 @@ local function BuildWatch(page)
 
 	function page:UpdateScanButton()
 		local st = ns.Scanner.status
-		page.scanBtn:SetText(st.scanning and format("Stop (%d/%d)", min(st.index, st.count), st.count) or "Scan watchlist")
+		page.scanBtn:SetText(st.scanning and format("Stop scan (%d/%d)", min(st.index, st.count), st.count) or "Scan watchlist")
 	end
 
 	function page:Update()
@@ -714,23 +768,291 @@ local function BuildWatch(page)
 end
 
 ---------------------------------------------------------------------------
+-- BoE Snipe tab
+---------------------------------------------------------------------------
+local function BuildSnipe(page)
+	local info = Text(page, "GameFontHighlightSmall")
+	info:SetPoint("TOPLEFT", 0, 0)
+	info:SetWidth(560)
+	page.info = info
+	page.scanBtn = Button(page, "Scan BoE", 120, function()
+		if ns.Scanner.status.scanning then ns.Scanner.StopScan() else ns.Snipe.Scan() end
+	end)
+	page.scanBtn:SetPoint("TOPRIGHT", -128, 2)
+	info:SetWidth(560)
+	Button(page, "Clear", 70, function() ns.Snipe.Clear(); UI.Refresh() end):SetPoint("TOPRIGHT", -54, 2)
+	Button(page, "CSV", 50, function()
+		local rows = {}
+		for _, sn in ipairs(ns.snipes) do
+			rows[#rows + 1] = { sn.name, ns.ItemIDFromKey(sn.key), sn.level, sn.unit, sn.ref, sn.pct, sn.sold, sn.source, sn.owner,
+				date("%Y-%m-%d %H:%M", sn.found) }
+		end
+		ns.Export.Show("BoE snipes", { "item", "itemID", "req_level", "price_copper", "normal_copper", "pct_of_normal",
+			"region_sold_per_day", "price_source", "seller", "found" }, rows)
+	end):SetPoint("TOPRIGHT", 0, 2)
+
+	page.list = UI.CreateList(page, {
+		{ title = "Item", width = 210, text = function(e) return ItemLabel(e.key, e.name, e.quality) end, sort = function(e) return e.name end, defaultAsc = true },
+		{ title = "Lvl", width = 35, justify = "RIGHT", text = function(e) return tostring(e.level) end, sort = function(e) return e.level end },
+		{ title = "Price", width = 90, justify = "RIGHT", text = function(e) return ns.FormatMoney(e.unit) end, sort = function(e) return e.unit end, defaultAsc = true },
+		{ title = "Normal", width = 90, justify = "RIGHT", text = function(e) return ns.FormatMoney(e.ref) end, sort = function(e) return e.ref end },
+		{ title = "%", width = 45, justify = "RIGHT", text = function(e) return ns.FormatPct(e.pct) end, sort = function(e) return e.pct end, defaultAsc = true },
+		{ title = "Sold/day", width = 60, justify = "RIGHT", text = function(e)
+			return e.sold and format("%.2f", e.sold) or "|cff909090?|r"
+		end, sort = function(e) return e.sold or 0 end },
+		{ title = "Source", width = 75, text = function(e) return e.source end, sort = function(e) return e.source end, defaultAsc = true },
+		{ title = "Seller", width = 95, text = function(e) return e.owner or "?" end, sort = function(e) return e.owner or "" end, defaultAsc = true },
+		{ title = "Found", width = 45, justify = "RIGHT", text = function(e) return ns.FormatAge(time() - e.found) end, sort = function(e) return e.found end },
+	}, 18, {
+		icons = IconFor, sortCol = 5, sortAsc = true,
+		onClick = function(e, button)
+			if button == "LeftButton" and IsShiftKeyDown() then
+				ChatEdit_InsertLink(ns.GetItemLinkForKey(e.key, e.name, e.quality))
+			elseif button == "LeftButton" then
+				ns.Integrations.SearchItem(e.name)
+			end
+		end,
+		onEnter = function(row, e)
+			ShowItemTooltip(row, e.key)
+			GameTooltip:AddLine(" ")
+			GameTooltip:AddLine(format("Listed at %s of its normal price (%s). You would save %s.", ns.FormatPct(e.pct),
+				e.source, ns.FormatMoney(e.profit)), 1, 0.5, 0, true)
+			GameTooltip:AddLine("Click: search it. Shift-click: link. Market Intel never buys for you.", 0.7, 0.7, 0.7, true)
+			GameTooltip:Show()
+		end,
+	})
+	page.list:SetPoint("TOPLEFT", 0, -24)
+
+	function page:UpdateScanButton()
+		local st = ns.Scanner.status
+		if st.scanning then
+			page.scanBtn:SetText(format("Stop scan (%d/%d)", min(st.index, st.count), st.count))
+		else
+			page.scanBtn:SetText(format("Scan BoE %d-%d", ns.settings.snipeMinLevel, ns.settings.snipeMaxLevel))
+		end
+	end
+
+	function page:Update()
+		local s = ns.settings
+		local note = ns.Integrations.HasTSM() and "" or " |cffff5050TSM not found: no sale-rate data.|r"
+		info:SetText(format("Blue/epic gear, required level %d-%d, listed at or below %d%% of normal%s.%s",
+			s.snipeMinLevel, s.snipeMaxLevel, s.snipePct,
+			s.snipeRequireSaleRate and format(", selling %.2f+ a day in your region", s.snipeMinSold) or "", note))
+		page:UpdateScanButton()
+		page.list:SetData(ns.snipes)
+	end
+end
+
+---------------------------------------------------------------------------
+-- Flips tab
+---------------------------------------------------------------------------
+local RISK_COLOR = { Low = "|cff40ff40", Medium = "|cffffd200", High = "|cffff5050" }
+
+local function BuildFlips(page)
+	local info = Text(page, "GameFontHighlightSmall")
+	info:SetPoint("TOPLEFT", 0, 0)
+	info:SetWidth(720)
+	page.info = info
+	Button(page, "CSV", 50, function()
+		local rows = {}
+		for _, f in ipairs(page.list.data) do
+			rows[#rows + 1] = { f.name, ns.ItemIDFromKey(f.key), f.qty, f.auctions, f.maxUnit, f.cost, f.resale, f.profit, f.roi, f.risk }
+		end
+		ns.Export.Show("Flips", { "item", "itemID", "buy_units", "buy_auctions", "max_unit_copper", "cost_copper",
+			"resell_unit_copper", "profit_copper", "roi", "risk" }, rows)
+	end):SetPoint("TOPRIGHT", 0, 2)
+
+	page.list = UI.CreateList(page, {
+		{ title = "Item", width = 200, text = function(e) return ItemLabel(e.key, e.name) end, sort = function(e) return e.name end, defaultAsc = true },
+		{ title = "Buy", width = 75, justify = "RIGHT", text = function(e) return format("%d (%d)", e.qty, e.auctions) end, sort = function(e) return e.qty end },
+		{ title = "Up to", width = 85, justify = "RIGHT", text = function(e) return ns.FormatMoney(e.maxUnit) end, sort = function(e) return e.maxUnit end },
+		{ title = "Cost", width = 95, justify = "RIGHT", text = function(e) return ns.FormatMoney(e.cost) end, sort = function(e) return e.cost end },
+		{ title = "Relist at", width = 85, justify = "RIGHT", text = function(e) return ns.FormatMoney(e.resale) end, sort = function(e) return e.resale end },
+		{ title = "Profit", width = 95, justify = "RIGHT", text = function(e) return ns.FormatMoney(e.profit) end, sort = function(e) return e.profit end },
+		{ title = "Return", width = 55, justify = "RIGHT", text = function(e) return ns.FormatPct(e.roi) end, sort = function(e) return e.roi end },
+		{ title = "Risk", width = 60, text = function(e) return (RISK_COLOR[e.risk] or "") .. e.risk .. "|r" end,
+			sort = function(e) return e.risk == "Low" and 1 or e.risk == "Medium" and 2 or 3 end, defaultAsc = true },
+	}, 18, {
+		icons = IconFor, sortCol = 6,
+		onClick = function(e) ns.Integrations.SearchItem(e.name) end,
+		onEnter = function(row, e)
+			ShowItemTooltip(row, e.key)
+			GameTooltip:AddLine(" ")
+			GameTooltip:AddLine(format("Suggestion: buy the %d cheapest auction%s (%d units, up to %s each) for %s,",
+				e.auctions, e.auctions == 1 and "" or "s", e.qty, ns.FormatMoney(e.maxUnit), ns.FormatMoney(e.cost)), 1, 1, 1, true)
+			GameTooltip:AddLine(format("then relist at %s each. After the 5%% cut and deposits: %s profit (%s return).",
+				ns.FormatMoney(e.resale), ns.FormatMoney(e.profit), ns.FormatPct(e.roi)), 1, 1, 1, true)
+			GameTooltip:AddLine(format("Risk %s: depth %s%s.", e.risk, e.rating and ns.Analysis.RATING_TEXT[e.rating] or "unknown",
+				e.sold and format(", TSM region sells %.1f a day", e.sold) or ""), 0.8, 0.8, 0.8, true)
+			GameTooltip:AddLine("Click: search it. Market Intel never buys for you.", 0.7, 0.7, 0.7)
+			GameTooltip:Show()
+		end,
+	})
+	page.list:SetPoint("TOPLEFT", 0, -24)
+
+	function page:Update()
+		local s = ns.settings
+		info:SetText(format("Suggestions only, nothing is bought for you. At least %s profit and %d%% return, from searches in the last %d min.",
+			ns.FormatMoney(s.flipMinProfit), s.flipMinROI, s.flipMaxAge))
+		page.list:SetData(ns.Advisor.FindFlips(time()))
+	end
+end
+
+---------------------------------------------------------------------------
+-- Crafting tab
+---------------------------------------------------------------------------
+local function BuildCrafting(page)
+	page.showAll = false
+	local cb = CheckBox(page, "Show all known recipes (right-click a row to star it)", function(v) page.showAll = v; page:Update() end)
+	cb:SetPoint("TOPLEFT", -4, 4)
+	page.source = Text(page, "GameFontHighlightSmall", "RIGHT")
+	page.source:SetPoint("TOPRIGHT", -58, -2)
+	Button(page, "CSV", 50, function()
+		local rows = {}
+		for _, e in ipairs(page.list.data) do
+			rows[#rows + 1] = { e.name, e.prof, e.cost, e.value, e.profit, e.margin, e.dealProfit, e.fav or "" }
+		end
+		ns.Export.Show("Crafting", { "recipe", "profession", "cost_copper", "sells_for_copper", "profit_copper", "margin",
+			"profit_with_deals_copper", "favourite_from" }, rows)
+	end):SetPoint("TOPRIGHT", 0, 2)
+
+	page.list = UI.CreateList(page, {
+		{ title = "Recipe", width = 210, text = function(e) return e.key and ItemLabel(e.key, e.name) or e.name end, sort = function(e) return e.name end, defaultAsc = true },
+		{ title = "Profession", width = 90, text = function(e) return e.prof end, sort = function(e) return e.prof end, defaultAsc = true },
+		{ title = "Cost", width = 90, justify = "RIGHT", text = function(e)
+			return e.missing and "|cff909090missing|r" or ns.FormatMoney(e.cost)
+		end, sort = function(e) return e.cost end },
+		{ title = "Sells for", width = 90, justify = "RIGHT", text = function(e) return ns.FormatMoney(e.value) end, sort = function(e) return e.value or 0 end },
+		{ title = "Profit", width = 95, justify = "RIGHT", text = function(e)
+			if not e.profit then return "--" end
+			return (e.profit >= 0 and "|cff40ff40" or "|cffff5050") .. (e.profit < 0 and "-" or "") .. ns.FormatMoney(math.abs(e.profit)) .. "|r"
+		end, sort = function(e) return e.profit or -math.huge end },
+		{ title = "Margin", width = 55, justify = "RIGHT", text = function(e) return ns.FormatPct(e.margin) end, sort = function(e) return e.margin or -math.huge end },
+		{ title = "With deals", width = 95, justify = "RIGHT", text = function(e)
+			if not e.dealProfit then return "" end
+			return (e.dealProfit >= 0 and "|cff40ff40" or "|cffff5050") .. (e.dealProfit < 0 and "-" or "") .. ns.FormatMoney(math.abs(e.dealProfit)) .. "|r"
+		end, sort = function(e) return e.dealProfit or -math.huge end },
+		{ title = "Fav", width = 30, text = function(e) return e.fav == "TSM" and "|cffffd200TSM|r" or (e.fav and "|cffffd200*|r" or "") end },
+	}, 18, {
+		icons = function(e) return e.key and ns.GetItemIcon(e.key) or "Interface\\Icons\\Trade_Engraving" end, sortCol = 5,
+		onClick = function(e, button)
+			if button == "RightButton" then
+				ns.Crafting.ToggleStar(e.spellID)
+			elseif e.key then
+				UI.ShowHistory(e.key)
+			end
+		end,
+		onEnter = function(row, e)
+			GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+			GameTooltip:SetText(e.name)
+			if e.rec.made and e.rec.made ~= 1 then GameTooltip:AddLine(format("Makes %.1f on average", e.rec.made), 0.8, 0.8, 0.8) end
+			for _, part in ipairs(e.parts) do
+				GameTooltip:AddDoubleLine(format("%dx %s", part.count, part.name or "?"),
+					part.price and (ns.FormatMoney(part.price * part.count) .. " |cff909090(" .. part.source .. ")|r") or "|cffff5050no price|r", 1, 1, 1, 1, 1, 1)
+			end
+			if e.value then GameTooltip:AddDoubleLine("Sells for (after 5% cut)", ns.FormatMoney(e.value * 0.95), 1, 1, 1, 1, 1, 1) end
+			GameTooltip:AddLine(e.fav == "TSM" and "Starred in TSM." or "Right-click: star or unstar in Market Intel.", 0.7, 0.7, 0.7)
+			GameTooltip:Show()
+		end,
+	})
+	page.list:SetPoint("TOPLEFT", 0, -24)
+
+	function page:Update()
+		local _, tsmFound = ns.Crafting.GetFavorites()
+		local n = 0
+		for _ in pairs(ns.db.recipes or {}) do n = n + 1 end
+		page.source:SetText(format("%d recipes known. TSM favourites: %s", n,
+			tsmFound and "|cff40ff40read|r" or "|cffff9900not found (star recipes here instead)|r"))
+		page.list:SetData(ns.Crafting.List(page.showAll))
+	end
+end
+
+---------------------------------------------------------------------------
+-- Ledger tab
+---------------------------------------------------------------------------
+local TYPE_TEXT = { sold = "|cff40ff40Sold|r", bought = "|cff66bbffBought|r", expired = "|cffff9900Expired|r", cancelled = "|cff909090Cancelled|r" }
+
+local function BuildLedger(page)
+	page.days = 30
+	page.summary = Text(page, "GameFontHighlightSmall")
+	page.summary:SetPoint("TOPLEFT", 0, -2)
+	page.summary:SetWidth(560)
+	page.periods = {}
+	for i, days in ipairs({ 7, 30, 0 }) do
+		local b = Button(page, days == 0 and "All" or (days .. "d"), 44, function() page.days = days; page:Update() end)
+		b:SetPoint("TOPRIGHT", -54 - (3 - i) * 46, 2)
+		page.periods[days] = b
+	end
+	Button(page, "CSV", 50, function()
+		local rows = {}
+		for _, e in ipairs(ns.Ledger.Entries(page.days > 0 and page.days or nil)) do
+			rows[#rows + 1] = { date("%Y-%m-%d %H:%M", e.t), e.type, e.name, e.qty, e.gross, e.cut, e.net, e.who }
+		end
+		ns.Export.Show("Ledger", { "date", "type", "item", "qty", "amount_copper", "ah_cut_copper", "net_copper", "other_player" }, rows)
+	end):SetPoint("TOPRIGHT", 0, 2)
+
+	page.list = UI.CreateList(page, {
+		{ title = "Date", width = 95, text = function(e) return date("%d %b %H:%M", e.t) end, sort = function(e) return e.t end },
+		{ title = "Type", width = 75, text = function(e) return TYPE_TEXT[e.type] or e.type end, sort = function(e) return e.type end, defaultAsc = true },
+		{ title = "Item", width = 220, text = function(e) return e.key and ItemLabel(e.key, e.name) or e.name end, sort = function(e) return e.name end, defaultAsc = true },
+		{ title = "Qty", width = 40, justify = "RIGHT", text = function(e) return e.qty and tostring(e.qty) or "?" end, sort = function(e) return e.qty or 0 end },
+		{ title = "Amount", width = 95, justify = "RIGHT", text = function(e) return e.gross and ns.FormatMoney(e.gross) or "" end, sort = function(e) return e.gross or 0 end },
+		{ title = "AH cut", width = 80, justify = "RIGHT", text = function(e) return e.cut and e.cut > 0 and ns.FormatMoney(e.cut) or "" end, sort = function(e) return e.cut or 0 end },
+		{ title = "Player", width = 110, text = function(e) return e.who or "" end, sort = function(e) return e.who or "" end, defaultAsc = true },
+	}, 17, {
+		icons = function(e) return e.key and ns.GetItemIcon(e.key) or "Interface\\Icons\\INV_Letter_15" end, sortCol = 1,
+		onEnter = function(row, e)
+			GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+			GameTooltip:SetText(e.name or "?")
+			local st = ns.Ledger.ItemStats(e.name)
+			if st then
+				GameTooltip:AddDoubleLine("Last 30 days", format("%d sold, %d expired", st.sold, st.expired), 1, 1, 1, 1, 1, 1)
+				GameTooltip:AddDoubleLine("Sell-through", ns.FormatPct(st.sellThrough), 1, 1, 1, 1, 1, 1)
+				if st.avgUnit then GameTooltip:AddDoubleLine("Average price each", ns.FormatMoney(st.avgUnit), 1, 1, 1, 1, 1, 1) end
+			end
+			GameTooltip:Show()
+		end,
+	})
+	page.list:SetPoint("TOPLEFT", 0, -40)
+
+	function page:Update()
+		for days, b in pairs(page.periods) do
+			if days == page.days then b:LockHighlight() else b:UnlockHighlight() end
+		end
+		local days = page.days > 0 and page.days or nil
+		local sm = ns.Ledger.Summary(days)
+		local entries = ns.Ledger.Entries(days)
+		if #entries == 0 then
+			page.summary:SetText("No auction mail recorded yet. Open your mailbox: sales, purchases and expired auctions are read from it.")
+		else
+			page.summary:SetText(format("Sales %s (%d)  -  AH cut %s  -  Bought %s (%d)\nNet profit %s%s  -  Expired %d, cancelled %d  -  Sell-through %s",
+				ns.FormatMoney(sm.sales), sm.sold, ns.FormatMoney(sm.cut), ns.FormatMoney(sm.spent), sm.bought,
+				sm.profit < 0 and "-" or "", ns.FormatMoney(math.abs(sm.profit)), sm.expired, sm.cancelled, ns.FormatPct(sm.sellThrough)))
+		end
+		page.list:SetData(entries)
+	end
+end
+
+---------------------------------------------------------------------------
 -- Settings tab
 ---------------------------------------------------------------------------
 local NUMBER_SETTINGS = {
 	{ key = "dealPct", label = "Deal threshold (% of normal)", lo = 5, hi = 100,
 		tip = "A listing is a deal when its price per item is at or below this percentage of the normal price." },
-	{ key = "minDealProfit", label = "Minimum saving per deal (gold)", lo = 0, hi = 100000, gold = true,
+	{ key = "minDealProfit", label = "Min. saving per deal (gold)", lo = 0, hi = 100000, gold = true,
 		tip = "Ignore deals that save less than this per auction, so cheap items do not spam alerts." },
-	{ key = "minHistoryDays", label = "Days of history before trusting it", lo = 1, hi = 14,
+	{ key = "strongAlertMin", label = "Big alert from saving (gold)", lo = 0, hi = 100000, gold = true,
+		tip = "Deals saving at least this much get the big alert (screen message and taskbar flash). Watchlist hits and BoE snipes always do." },
+	{ key = "minHistoryDays", label = "History days before trusting", lo = 1, hi = 14,
 		tip = "How many past days of prices an item needs before its normal price is used for deals." },
-	{ key = "rawDays", label = "Keep every snapshot for (days)", lo = 1, hi = 14,
+	{ key = "rawDays", label = "Keep every scan for (days)", lo = 1, hi = 14,
 		tip = "Individual scans are kept this long (used for price-war detection), then merged into one entry per day." },
-	{ key = "keepDays", label = "History for searched/watched items (days)", lo = 7, hi = 365,
+	{ key = "keepDays", label = "Days kept: searched items", lo = 7, hi = 365,
 		tip = "Daily history kept for items you search for or watch." },
-	{ key = "scanKeepDays", label = "History for full-scan-only items (days)", lo = 4, hi = 365,
+	{ key = "scanKeepDays", label = "Days kept: full-scan items", lo = 4, hi = 365,
 		tip = "Daily history kept for items only ever seen in full scans. Lower this if your saved data gets large." },
-	{ key = "minQuality", label = "Minimum item quality (0 grey - 4 epic)", lo = 0, hi = 5,
-		tip = "Items below this quality are not recorded. 1 skips grey junk." },
+	{ key = "minQuality", label = "Min. quality to record (0-4)", lo = 0, hi = 5,
+		tip = "Items below this quality are not recorded. 0 grey, 1 white, 2 green, 3 blue, 4 epic." },
 	{ key = "floodSellers", label = "Sellers for Flooded", lo = 2, hi = 100,
 		tip = "An item with at least this many sellers is rated Flooded." },
 	{ key = "crowdSellers", label = "Sellers for Crowded", lo = 2, hi = 100,
@@ -741,12 +1063,39 @@ local NUMBER_SETTINGS = {
 		tip = "Crowded when the units on sale are at least this many times the item's normal supply." },
 	{ key = "thinRatio", label = "Supply ratio for Thin", lo = 0.05, hi = 1, decimal = true,
 		tip = "Thin when the units on sale are at most this fraction of the item's normal supply." },
+	{ key = "postUndercut", label = "Undercut by (copper)", lo = 0, hi = 100000,
+		tip = "The posting advisor suggests this much below the cheapest auction." },
+	{ key = "postFloorPct", label = "Hold below (% of normal)", lo = 10, hi = 100,
+		tip = "The posting advisor says Hold instead of undercutting below this percentage of the normal price." },
+	{ key = "postPremiumPct", label = "Post-high premium (%)", lo = 0, hi = 200,
+		tip = "When nobody else is selling, suggest this much above the normal price." },
+	{ key = "flipMinProfit", label = "Flip min. profit (gold)", lo = 0, hi = 100000, gold = true,
+		tip = "Only suggest flips that make at least this much after the AH cut and deposits." },
+	{ key = "flipMinROI", label = "Flip min. return (%)", lo = 1, hi = 1000,
+		tip = "Only suggest flips that return at least this percentage of the gold spent." },
+	{ key = "flipMaxAge", label = "Flips from searches within (min)", lo = 5, hi = 1440,
+		tip = "Flips are worked out from searches this recent; older listings may already be gone." },
+	{ key = "snipePct", label = "Snipe below (% of normal)", lo = 5, hi = 100,
+		tip = "BoE snipes are gear listed at or below this percentage of its normal price." },
+	{ key = "snipeMinLevel", label = "Snipe min. required level", lo = 1, hi = 70,
+		tip = "Lowest required level for BoE snipes." },
+	{ key = "snipeMaxLevel", label = "Snipe max. required level", lo = 1, hi = 70,
+		tip = "Highest required level for BoE snipes." },
+	{ key = "snipeMinQuality", label = "Snipe min. quality (3-4)", lo = 2, hi = 4,
+		tip = "3 = rare (blue) and epic, 4 = epic only. 2 adds green items." },
+	{ key = "snipeMinSold", label = "Snipe min. region sold/day", lo = 0, hi = 100, decimal = true,
+		tip = "Only snipe items that TSM says sell at least this many a day per auction house in your region." },
 }
 local BOOL_SETTINGS = {
-	{ key = "alertChat", label = "Print deals in chat" },
-	{ key = "alertSound", label = "Play a sound for new deals" },
-	{ key = "tooltip", label = "Show Market Intel on item tooltips" },
-	{ key = "useTSMFallback", label = "Use TSM market value until I have enough history" },
+	{ key = "alertChat", label = "Print alerts in chat" },
+	{ key = "alertSound", label = "Play alert sounds" },
+	{ key = "alertRaidWarning", label = "Big alerts: message on screen" },
+	{ key = "alertFlash", label = "Big alerts: flash taskbar icon" },
+	{ key = "tooltip", label = "Market Intel on item tooltips" },
+	{ key = "useTSMFallback", label = "Use TSM price until enough history" },
+	{ key = "snipeEnabled", label = "Look for BoE snipes" },
+	{ key = "snipeRequireSaleRate", label = "Snipes need TSM sale rate" },
+	{ key = "minimapHide", label = "Hide the minimap button" },
 }
 
 local function FormatSetting(def, v)
@@ -755,23 +1104,49 @@ local function FormatSetting(def, v)
 	return tostring(v)
 end
 
+local function SoundButton(page, key, prefix)
+	local b
+	b = Button(page, "", 200, function()
+		local list, i = ns.Alerts.SOUNDS, 1
+		for j, snd in ipairs(list) do if snd.id == ns.settings[key] then i = j end end
+		local nextSound = list[i % #list + 1]
+		ns.settings[key] = nextSound.id
+		PlaySound(nextSound.kit, "Master")
+		page:Update()
+	end)
+	b.update = function()
+		for _, snd in ipairs(ns.Alerts.SOUNDS) do
+			if snd.id == ns.settings[key] then b:SetText(prefix .. snd.label) end
+		end
+	end
+	return b
+end
+
 local function BuildSettings(page)
 	page.controls = {}
 	for i, def in ipairs(BOOL_SETTINGS) do
-		local cb = CheckBox(page, def.label, function(v) ns.settings[def.key] = v end)
-		cb:SetPoint("TOPLEFT", -4, 2 - (i - 1) * 24)
+		local col, row = (i - 1) % 3, floor((i - 1) / 3)
+		local cb = CheckBox(page, def.label, function(v)
+			ns.settings[def.key] = v
+			if def.key == "minimapHide" then ns.Minimap.Refresh() end
+		end)
+		cb:SetPoint("TOPLEFT", -4 + col * 280, 4 - row * 25)
 		cb.def = def
 		page.controls[#page.controls + 1] = cb
 	end
+	page.sound1 = SoundButton(page, "alertSoundChoice", "Alert sound: ")
+	page.sound1:SetPoint("TOPLEFT", 0, -76)
+	page.sound2 = SoundButton(page, "strongSound", "Big alert sound: ")
+	page.sound2:SetPoint("TOPLEFT", 280, -76)
 	for i, def in ipairs(NUMBER_SETTINGS) do
-		local col, row = (i - 1) % 2, floor((i - 1) / 2)
-		local x, y = col * 350, -110 - row * 30
+		local col, row = (i - 1) % 3, floor((i - 1) / 3)
+		local x, y = col * 280, -108 - row * 25
 		local label = Text(page, "GameFontHighlightSmall")
 		label:SetPoint("TOPLEFT", x, y - 4)
-		label:SetWidth(240)
+		label:SetWidth(190)
 		label:SetText(def.label)
-		local eb = EditBox(page, 70)
-		eb:SetPoint("TOPLEFT", x + 250, y)
+		local eb = EditBox(page, 60)
+		eb:SetPoint("TOPLEFT", x + 196, y)
 		eb.def = def
 		eb:SetScript("OnEnter", function(self)
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -798,8 +1173,8 @@ local function BuildSettings(page)
 	end
 
 	page.addons = Text(page, "GameFontHighlightSmall")
-	page.addons:SetPoint("BOTTOMLEFT", 0, 34)
-	page.addons:SetWidth(700)
+	page.addons:SetPoint("BOTTOMLEFT", 0, 30)
+	page.addons:SetWidth(840)
 
 	Button(page, "Compact old data", 140, function()
 		ns.History.Compact(time())
@@ -808,6 +1183,7 @@ local function BuildSettings(page)
 	end):SetPoint("BOTTOMLEFT", 0, 0)
 	Button(page, "Reset defaults", 120, function()
 		for k, v in pairs(ns.DEFAULTS) do ns.settings[k] = v end
+		ns.Minimap.Refresh()
 		page:Update()
 	end):SetPoint("BOTTOMLEFT", 150, 0)
 	Button(page, "Import from Auctionator", 170, function()
@@ -825,6 +1201,8 @@ local function BuildSettings(page)
 				c:SetText(FormatSetting(c.def, ns.settings[c.def.key]))
 			end
 		end
+		page.sound1.update()
+		page.sound2.update()
 		local items, snaps, days = ns.History.CountData()
 		page.addons:SetText(format("Auction house: |cffffffff%s|r   Auctionator: %s   TSM: %s   Stored: %d items, %d snapshots, %d daily summaries",
 			ns.realmKey or "?",
@@ -837,7 +1215,10 @@ end
 ---------------------------------------------------------------------------
 -- Main window
 ---------------------------------------------------------------------------
-local BUILDERS = { deals = BuildDeals, depth = BuildDepth, history = BuildHistory, watch = BuildWatch, settings = BuildSettings }
+local BUILDERS = {
+	deals = BuildDeals, snipe = BuildSnipe, flips = BuildFlips, depth = BuildDepth, history = BuildHistory,
+	crafting = BuildCrafting, ledger = BuildLedger, watch = BuildWatch, settings = BuildSettings,
+}
 
 local function UpdateStatus()
 	if not frame then return end
@@ -846,7 +1227,8 @@ local function UpdateStatus()
 	if st.fullScan then
 		text = format("Reading full scan... %d%%", floor((st.fullScanProgress or 0) * 100))
 	elseif st.scanning then
-		text = format("Scanning watchlist %d/%d", min(st.index, st.count), st.count)
+		text = format("%s: search %d/%d%s", st.label or "Scanning", min(st.index, st.count), st.count,
+			st.pages and format(", page %d/%d", st.page + 1, st.pages) or "")
 	elseif ns.Scanner.IsAuctionHouseOpen() then
 		text = "Auction house open - searches are being recorded"
 	else
@@ -889,8 +1271,8 @@ local function CreateMain()
 	close:SetPoint("TOPRIGHT", -6, -6)
 
 	for i, tab in ipairs(TAB_ORDER) do
-		local b = Button(frame, TAB_TITLES[tab], 100, function() UI.Show(tab) end)
-		b:SetPoint("TOPLEFT", 18 + (i - 1) * 104, -38)
+		local b = Button(frame, TAB_TITLES[tab], 88, function() UI.Show(tab) end)
+		b:SetPoint("TOPLEFT", 18 + (i - 1) * 92, -38)
 		tabButtons[tab] = b
 		local page = CreateFrame("Frame", nil, frame)
 		page:SetPoint("TOPLEFT", 20, -70)
@@ -904,7 +1286,10 @@ local function CreateMain()
 	frame.status:SetPoint("BOTTOMLEFT", 20, 14)
 	frame.status:SetWidth(WIDTH - 40)
 
-	frame:SetScript("OnShow", function() UI.Refresh(true) end)
+	frame:SetScript("OnShow", function()
+		ns.Alerts.ClearUnseen()
+		UI.Refresh(true)
+	end)
 end
 
 -- Saved position if the window was ever moved; otherwise beside the auction
@@ -916,7 +1301,8 @@ function UI.PlaceWindow()
 	if pos then
 		frame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
 	elseif AuctionFrame and AuctionFrame:IsShown() then
-		frame:SetPoint("TOPLEFT", AuctionFrame, "TOPRIGHT", 120, 0)
+		-- right of the auction house, below its Market Intel button, clear of the minimap
+		frame:SetPoint("TOPLEFT", AuctionFrame, "TOPRIGHT", 10, -70)
 	else
 		frame:SetPoint("CENTER")
 	end
@@ -968,7 +1354,8 @@ ns.On("MI_DATA_UPDATED", function() UI.Refresh() end)
 ns.On("MI_SCAN_PROGRESS", function()
 	UpdateStatus()
 	if pages.watch then pages.watch:UpdateScanButton() end
-	if currentTab == "watch" then UI.Refresh() end
+	if pages.snipe then pages.snipe:UpdateScanButton() end
+	if currentTab == "watch" or currentTab == "snipe" then UI.Refresh() end
 end)
 ns.On("MI_AH_CLOSED", function() UpdateStatus() end)
 
