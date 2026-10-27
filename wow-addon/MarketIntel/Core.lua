@@ -2,7 +2,7 @@
 local ADDON, ns = ...
 
 ns.name = ADDON or "MarketIntel"
-ns.version = "1.3.1"
+ns.version = "1.3.2"
 
 local floor, format, tostring, tonumber, type, pairs = math.floor, string.format, tostring, tonumber, type, pairs
 
@@ -352,10 +352,49 @@ ns.On("ADDON_LOADED", function(name)
 	ns.InitDB()
 end)
 
+-- Repairs for data saved by earlier versions (each runs once).
+function ns.RepairData()
+	local db = ns.db
+	db.repairs = db.repairs or {}
+	if not db.repairs.r131 then
+		-- 1.3.1 and earlier could store "" as a name for items the client had not loaded yet
+		for _, realm in pairs(db.realms) do
+			for _, item in pairs(realm.items or {}) do
+				if item.n == "" then item.n = nil end
+			end
+			-- ledger names kept the stack size: "Thorium Widget (2)"
+			for _, e in ipairs(realm.ledger or {}) do
+				local clean = ns.Ledger.CleanName(e.name)
+				if clean ~= e.name then e.name, e.key = clean, nil end
+			end
+			local fixed = {}
+			for id, v in pairs(realm.ledgerSeen or {}) do
+				local kind, name, rest = id:match("^([^|]*)|(.-)|([^|]*|[^|]*|[^|]*)$")
+				local newId = kind and (kind .. "|" .. ns.Ledger.CleanName(name) .. "|" .. rest) or id
+				local old = fixed[newId]
+				if old and type(old) == "table" and type(v) == "table" then v = { n = old.n + v.n, t = math.max(old.t, v.t) } end
+				fixed[newId] = v
+			end
+			if realm.ledgerSeen then realm.ledgerSeen = fixed end
+		end
+		-- recipes stored while the profession window still said "UNKNOWN"
+		for _, rec in pairs(db.recipes or {}) do
+			if rec.prof == "UNKNOWN" then rec.prof = "?" end
+			if rec.prof == "?" then
+				for _, tsmRec in pairs(ns.Crafting.GetTSM().recipes) do
+					if tsmRec.n == rec.n then rec.prof = tsmRec.prof break end
+				end
+			end
+		end
+		db.repairs.r131 = true
+	end
+end
+
 ns.On("PLAYER_LOGIN", function()
 	if not ns.db then ns.InitDB() end
 	ns.playerName = UnitName("player")
 	ns.SetAuctionHouse(ns.GetAuctionHouseKey())
+	ns.RepairData()
 	ns.History.Compact(time(), true)
 	ns.Fire("MI_READY")
 end)

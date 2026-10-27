@@ -18,12 +18,19 @@ It never buys, posts or cancels anything: it records prices and makes suggestion
 
 ## Install
 
-1. Download `dist/MarketIntel-1.3.1.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
+1. Download `dist/MarketIntel-1.3.2.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
 2. Restart the game. If the addon shows as "out of date", tick **Load out of date AddOns** on the character-select AddOns screen. To see your client's interface number, run `/dump select(4, GetBuildInfo())`. Then update the `## Interface:` line in `MarketIntel.toc` to match.
 
 **Updating:** exit the game, delete the old `Interface/AddOns/MarketIntel` folder, and unzip the new one in its place. Your price history, ledger, watchlist and settings are kept: they're saved separately in `WTF/Account/<ACCOUNT>/SavedVariables/MarketIntel.lua`.
 
 ## What's new
+
+**1.3.2**: fixes found in a real saved-data file from the game.
+- **Item names:** during full scans the game returns an empty name for items it hasn't loaded yet. Those were saved without a name, so the Watchlist and History search couldn't find them. They're now read again until the name arrives.
+- **Professions:** recipes read while a profession window was still loading were filed under "UNKNOWN". They're now read once the window is ready.
+- **Ledger:** names from mail subjects kept the stack size, e.g. "Thorium Widget (2)". They now match the real item name.
+- **Existing data is repaired automatically** at your next login, once, without counting any mail twice.
+- **Checked against real data:** full-scan quantities match Auctionator's exactly, and prices look right.
 
 **1.3.1**: checked against real Auctionator and TSM files.
 - **Auctionator import works with Auctionator 8+.** Its database is now stored packed, so Market Intel decodes it. It imports once per auction house, even if you have already scanned there, and in the background without freezing the game.

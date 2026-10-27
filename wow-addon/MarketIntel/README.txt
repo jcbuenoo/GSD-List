@@ -1,4 +1,4 @@
-MARKET INTEL 1.3.1 - auction house helper for WoW TBC Classic
+MARKET INTEL 1.3.2 - auction house helper for WoW TBC Classic
 =============================================================
 
 Works alongside Auctionator and TradeSkillMaster (TSM). It never buys, posts
@@ -99,6 +99,10 @@ GOOD TO KNOW
 
 WHAT'S NEW
 ----------
+1.3.2  Fixed (found in real game data): items saved without a name during
+       full scans; recipes filed under profession "UNKNOWN"; ledger names
+       keeping the stack size, e.g. "Thorium Widget (2)". Your existing data
+       is repaired automatically at the next login.
 1.3.1  Auctionator import works with Auctionator 8+ (packed database).
        TSM starred recipes read correctly; no need to open professions.
        Vendor prices for materials. One silly listing can't set a normal

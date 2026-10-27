@@ -32,7 +32,9 @@ end
 
 function C.ScanTradeSkill()
 	if not GetNumTradeSkills then return end
-	local prof = GetTradeSkillLine and GetTradeSkillLine() or "?"
+	local prof = GetTradeSkillLine and GetTradeSkillLine()
+	-- the window reports "UNKNOWN" until its data has loaded; TRADE_SKILL_UPDATE brings us back
+	if not prof or prof == "" or prof == "UNKNOWN" then return end
 	for i = 1, GetNumTradeSkills() do
 		local name, kind = GetTradeSkillInfo(i)
 		local link = name and kind ~= "header" and GetTradeSkillRecipeLink and GetTradeSkillRecipeLink(i)
@@ -58,7 +60,8 @@ end
 -- Enchanting (and hunter pet training) use the older "craft" window in TBC.
 function C.ScanCraft()
 	if not GetNumCrafts then return end
-	local prof = GetCraftDisplaySkillLine and GetCraftDisplaySkillLine() or "Enchanting"
+	local prof = GetCraftDisplaySkillLine and GetCraftDisplaySkillLine()
+	if not prof or prof == "" or prof == "UNKNOWN" then prof = "Enchanting" end
 	for i = 1, GetNumCrafts() do
 		local name, _, kind = GetCraftInfo(i)
 		local link = name and kind ~= "header" and GetCraftItemLink and GetCraftItemLink(i)
@@ -165,10 +168,10 @@ function C.AllRecipes()
 	local all, names = {}, {}
 	for id, rec in pairs(C.GetTSM().recipes) do
 		all[id] = rec
-		names[rec.n .. "|" .. rec.prof] = true
+		names[rec.n] = true
 	end
 	for id, rec in pairs(Recipes()) do
-		if not names[rec.n .. "|" .. rec.prof] then all[id] = rec end
+		if not names[rec.n] then all[id] = rec end
 	end
 	return all
 end

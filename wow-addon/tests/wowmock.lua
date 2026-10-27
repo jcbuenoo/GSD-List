@@ -181,6 +181,9 @@ function M.install()
 	_G.GetAuctionItemInfo = function(which, i)
 		local a = (which == "owner" and M.owned or M.list)[i]
 		if not a or a.uncached then return nil end
+		if a.blankName then -- what the real client returns for items it has not loaded yet
+			return "", "tex", a.count, a.quality or 1, true, a.level or 70, nil, 1, 1, a.buyout, 0, nil, nil, nil, nil, 0, a.id, false
+		end
 		return a.name, "tex", a.count, a.quality or 1, true, a.level or 70, nil, a.minBid or 1, 1, a.buyout, 0, nil, nil, a.owner,
 			a.owner, 0, a.id, true
 	end

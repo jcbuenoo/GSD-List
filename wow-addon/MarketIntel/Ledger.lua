@@ -29,6 +29,11 @@ local function Subjects()
 	return SUBJECTS
 end
 
+function L.CleanName(name)
+	if type(name) ~= "string" then return name end
+	return (name:gsub("%s%(%d+%)$", ""))
+end
+
 local function Store()
 	local realm = ns.realm
 	realm.ledger = realm.ledger or {}
@@ -113,7 +118,8 @@ function L.ScanInbox()
 					local buyout, moneyDelay, etsDelay -- luacheck: ignore
 					invoiceType, invName, player, bid, buyout, deposit, consignment, moneyDelay, etsDelay, invCount = GetInboxInvoiceInfo(i)
 				end
-				itemName = invName or itemName
+				-- subjects add the stack size for stacks: "Auction expired: Thorium Widget (2)"
+				itemName = L.CleanName(invName or itemName)
 				local sentAt = now - (MAIL_DAYS - daysLeft) * 86400
 				local amount = bid or money or 0
 				local id = MailId(kind, itemName, player or sender, amount, sentAt)

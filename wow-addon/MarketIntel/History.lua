@@ -231,7 +231,7 @@ function H.AddSnapshot(key, name, quality, snap, focus)
 		item = { s = "", d = "" }
 		items[key] = item
 	end
-	if name and item.n ~= name then
+	if name and name ~= "" and item.n ~= name then
 		item.n = name
 		if nameIndexOwner == items then nameIndex[name:lower()] = key end
 	end
@@ -503,7 +503,7 @@ end
 -- Display name for a key, even for imported items we have not seen yet.
 function H.GetName(key)
 	local item = H.GetItem(key)
-	if item and item.n then return item.n end
+	if item and item.n and item.n ~= "" then return item.n end
 	local name = GetItemInfo(ns.ItemStringFromKey(key) or 0)
 	if name and item then item.n = name end
 	return name

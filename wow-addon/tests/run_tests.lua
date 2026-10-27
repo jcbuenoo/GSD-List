@@ -1224,6 +1224,73 @@ test("watchlist BUY only for recent prices; badge ignores alerts while the windo
 end)
 
 ---------------------------------------------------------------------------
+-- 1.3.2: found in the user's real saved data
+---------------------------------------------------------------------------
+test("items the client has not loaded yet (empty name) are read again, never saved nameless", function()
+	local ns = load(nil)
+	M.OpenAH()
+	for i = 1, 400 do addAuctions("Item " .. i, 30000 + i, 2, 1000 + i) end
+	for i = 1, 30 do M.auctions[i * 9].blankName = true end
+	QueryAuctionItems("", nil, nil, 0, false, nil, true, false)
+	M.Tick(0.5)
+	for i = 1, 30 do M.auctions[i * 9].blankName = nil end -- item info arrives
+	M.Tick(5)
+	local blank = 0
+	for _, item in pairs(ns.realm.items) do if not item.n or item.n == "" then blank = blank + 1 end end
+	eq(blank, 0, "nameless items saved")
+	eq(ns.History.CountData(), 400)
+end)
+
+test("a profession window still saying UNKNOWN is skipped and read again when ready", function()
+	local ns = load(nil)
+	M.tradeskill = { line = "UNKNOWN", recipes = {
+		{ name = "Elixir of the Mongoose", spell = 17571, item = { id = 13452, name = "Elixir of the Mongoose" },
+			reagents = { { id = 13465, name = "Mountain Silversage", count = 2 } } } } }
+	M.FireEvent("TRADE_SKILL_SHOW"); M.Tick(1)
+	eq(ns.db.recipes and ns.db.recipes[17571], nil, "stored under UNKNOWN")
+	M.tradeskill.line = "Alchemy"
+	M.FireEvent("TRADE_SKILL_UPDATE"); M.Tick(1)
+	eq(ns.db.recipes[17571].prof, "Alchemy")
+end)
+
+test("ledger strips stack sizes from mail subjects", function()
+	local ns = load(nil)
+	M.mail = { { subject = "Auction expired: Thorium Widget (2)", daysLeft = 29, item = { name = "Thorium Widget", id = 15994, count = 2 } } }
+	M.FireEvent("MAIL_INBOX_UPDATE"); M.Tick(1)
+	eq(ns.Ledger.Entries()[1].name, "Thorium Widget")
+	eq(ns.Ledger.ItemStats("Thorium Widget").expired, 1)
+end)
+
+test("data saved by 1.3.1 is repaired once at login, without counting mail twice", function()
+	local saved = {
+		version = 2, settings = {}, watch = {},
+		recipes = { [17571] = { n = "Elixir of the Mongoose", prof = "UNKNOWN", item = "13452", made = 1, r = { ["13465"] = 2 }, rn = {} } },
+		realms = { ["Dreamscythe-Alliance"] = {
+			items = { ["15115"] = { n = "", s = "", d = "", seen = 1 } },
+			ledger = { { t = M.now - 3600, type = "expired", name = "Thorium Widget (2)", qty = 2 },
+				{ t = M.now - 3600, type = "expired", name = "Thorium Widget (2)", qty = 2 } },
+			ledgerSeen = {},
+		} },
+	}
+	-- the seen-id the old version stored for those two identical mails
+	local sentAt = M.now - (30 - 29) * 86400
+	saved.realms["Dreamscythe-Alliance"].ledgerSeen[string.format("expired|Thorium Widget (2)|Auction House|0|%d", math.floor(sentAt / 300))] = { n = 2, t = M.now }
+	_G.TradeSkillMasterDB = { ["f@Alliance - Dreamscythe@internalData@crafts"] = {
+		["c:1"] = { name = "Elixir of the Mongoose", profession = "Alchemy", itemString = "i:13452", numResult = 1, mats = { ["i:13465"] = 2 } } } }
+	local ns = load(saved)
+	eq(ns.realm.items["15115"].n, nil, "empty name kept")
+	eq(ns.db.recipes[17571].prof, "Alchemy", "UNKNOWN profession not repaired")
+	eq(ns.Ledger.Entries()[1].name, "Thorium Widget")
+	-- the same two mails are still in the mailbox: nothing new may be recorded
+	M.mail = {}
+	for _ = 1, 2 do table.insert(M.mail, { subject = "Auction expired: Thorium Widget (2)", daysLeft = 29, item = { name = "Thorium Widget", id = 15994, count = 2 } }) end
+	M.FireEvent("MAIL_INBOX_UPDATE"); M.Tick(1)
+	eq(#ns.Ledger.Entries(), 2, "repaired mails counted again")
+	eq(ns.db.repairs.r131, true)
+	eq(#ns.Crafting.List(true), 1, "recipe listed twice")
+end)
+
+---------------------------------------------------------------------------
 -- Interface
 ---------------------------------------------------------------------------
 local function populate(ns)

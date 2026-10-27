@@ -33,7 +33,8 @@ end
 -- Returns a listing table, false for rows we deliberately skip, or nil if the row is not loaded yet.
 local function ReadRow(i)
 	local name, _, count, quality, _, level, _, _, _, buyout, _, _, _, owner, _, _, itemId = GetAuctionItemInfo("list", i)
-	if not name or not itemId then return nil end
+	-- the client returns "" (not nil) for items it has not loaded yet: read them again later
+	if not name or name == "" or not itemId then return nil end
 	if not buyout or buyout <= 0 or not count or count <= 0 then return false end -- bid-only
 	if (quality or 0) < ns.settings.minQuality then return false end
 	local key = ns.ItemKeyFromLink(GetAuctionItemLink("list", i)) or tostring(itemId)
