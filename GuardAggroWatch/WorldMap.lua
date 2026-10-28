@@ -82,7 +82,7 @@ function WorldMap:Refresh()
                 local rw, rh = 2 * r / abs(rect.width) * w, 2 * r / abs(rect.height) * h
                 local fill = fills:Acquire()
                 fill:SetTexture(ns.MEDIA .. "disc")
-                fill:SetVertexColor(1, 0.1, 0.1, 0.25)
+                fill:SetVertexColor(1, 0.1, 0.1, 0.35)
                 fill:SetSize(rw, rh)
                 fill:SetPoint("CENTER", overlay, "TOPLEFT", x, y)
                 local ring = rings:Acquire()

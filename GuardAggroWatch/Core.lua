@@ -89,7 +89,7 @@ end
 function GAW:GetPlayerPos()
     local a, b, _, inst = UnitPosition("player")
     if not a then return nil end
-    return { a = a, b = b, inst = inst, facing = GetPlayerFacing() or 0 }
+    return { a = a, b = b, inst = inst, facing = (GetPlayerFacing and GetPlayerFacing()) or 0 }
 end
 
 function GAW:Offset(pos, p)
@@ -347,19 +347,21 @@ function GAW:ComputeStatus(pos)
     return st
 end
 
-local lastState, lastSound = "none", 0
+-- Each alert has its own throttle, so a caution chime never swallows the inside alarm.
+local lastState, lastSound = "none", {}
 function GAW:Alert(st)
     local s = self.db.settings
     if st.state ~= lastState then
         local now = GetTime()
-        if s.sound and now - lastSound > 2 then
-            if st.state == "inside" then
-                PlaySound(SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959, "Master")
-                lastSound = now
-            elseif st.state == "caution" and lastState == "safe" then
-                PlaySound(SOUNDKIT and SOUNDKIT.TELL_MESSAGE or 3081, "Master")
-                lastSound = now
-            end
+        local sound
+        if st.state == "inside" then
+            sound = SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959
+        elseif st.state == "caution" and lastState == "safe" then
+            sound = SOUNDKIT and SOUNDKIT.TELL_MESSAGE or 3081
+        end
+        if s.sound and sound and now - (lastSound[st.state] or 0) > 2 then
+            PlaySound(sound, "Master")
+            lastSound[st.state] = now
         end
         lastState = st.state
     end
@@ -417,12 +419,13 @@ function GAW:RecordAggro(pos, guardName, clean)
     if clean then
         -- Calibrate the nearest guard mark: you were at least this close when it noticed you.
         local g, d = self:Nearest(pos, MAX_AGGRO + 5, "guard")
-        if g and not g.r then
-            g.learned = max(g.learned or 0, min(MAX_AGGRO, d))
+        if g and not g.r and (not g.name or g.name == guardName) then
+            g.learned = max(g.learned or MIN_AGGRO, min(MAX_AGGRO, d))
             msg = msg .. format(" - nearest guard mark now uses %.0f yd", g.learned)
         end
     end
     Print("%s.", msg)
+    self:Refresh()
     return p
 end
 
@@ -432,13 +435,20 @@ end
 
 function GAW:Refresh()
     if ns.WorldMap then ns.WorldMap:Refresh() end
-    self:Update()
+    self:Update(true)
 end
 
-local scanElapsed = 0
-function GAW:Update()
+-- Nothing on screen can change while you stand still with the same guards in view, so the
+-- redraw is skipped then (lurking is mostly standing still).
+local scanElapsed, lastKey = 0, nil
+function GAW:Update(force)
     if not self.db then return end
     local pos = self:GetPlayerPos()
+    local live = self.live
+    local key = pos and format("%.2f:%.2f:%.3f:%d:%s:%s:%s:%d", pos.a, pos.b, pos.facing, live.count,
+        tostring(live.nearest), tostring(Minimap:GetZoom()), tostring(GetCVar("rotateMinimap")), UnitLevel("player"))
+    if not force and key and key == lastKey then return end
+    lastKey = key
     local st = pos and self:ComputeStatus(pos) or { state = "none", inside = 0, live = self.live }
     if pos then self:Alert(st) else self.flash:Hide() end
     if ns.Radar then ns.Radar:Update(pos, st) end
@@ -519,7 +529,7 @@ function GAW:Slash(input)
         if rest == "all" then
             StaticPopup_Show("GUARDAGGROWATCH_CLEAR_ALL")
         else
-            self:Clear("map")
+            StaticPopup_Show("GUARDAGGROWATCH_CLEAR_MAP")
         end
     elseif cmd == "setr" then
         local v = rest == "auto" and "auto" or tonumber(rest)
@@ -563,6 +573,13 @@ StaticPopupDialogs["GUARDAGGROWATCH_CLEAR_ALL"] = {
     timeout = 0, whileDead = true, hideOnEscape = true,
 }
 
+StaticPopupDialogs["GUARDAGGROWATCH_CLEAR_MAP"] = {
+    text = "Delete all Guard Aggro Watch marks on this map?",
+    button1 = YES, button2 = NO,
+    OnAccept = function() GAW:Clear("map") end,
+    timeout = 0, whileDead = true, hideOnEscape = true,
+}
+
 SLASH_GUARDAGGROWATCH1 = "/gaw"
 SLASH_GUARDAGGROWATCH2 = "/guardaggro"
 SlashCmdList.GUARDAGGROWATCH = function(msg) GAW:Slash(msg) end
@@ -581,7 +598,8 @@ BINDING_NAME_GAW_TOGGLE_RADAR = "Toggle radar"
 GAW:RegisterEvent("ADDON_LOADED")
 GAW:RegisterEvent("PLAYER_REGEN_DISABLED")
 GAW:RegisterEvent("PLAYER_REGEN_ENABLED")
-GAW:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+GAW:RegisterEvent("PLAYER_ENTER_COMBAT")
+GAW:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
 GAW:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == ADDON then
         GuardAggroWatchDB = GuardAggroWatchDB or {}
@@ -597,13 +615,11 @@ GAW:SetScript("OnEvent", function(self, event, arg1)
         combatStart = GetTime()
     elseif event == "PLAYER_REGEN_ENABLED" then
         combatStart = nil
-    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        -- Remember when you last acted on someone else, so guards answering your gank aren't
-        -- mistaken for a proximity pull.
-        local _, _, _, sourceGUID, _, _, _, destGUID = CombatLogGetCurrentEventInfo()
-        local me = UnitGUID("player")
-        if sourceGUID == me and destGUID and destGUID ~= "" and destGUID ~= me then
-            lastOffense = GetTime()
-        end
+    elseif event == "PLAYER_ENTER_COMBAT"
+        or (event == "UNIT_SPELLCAST_SUCCEEDED" and UnitCanAttack("player", "target")) then
+        -- You started auto-attacking or cast something with an enemy targeted. Remember it so
+        -- guards answering your gank aren't mistaken for a proximity pull. (The combat log is
+        -- restricted on this client, so these events stand in for it.)
+        lastOffense = GetTime()
     end
 end)

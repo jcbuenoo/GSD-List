@@ -47,7 +47,7 @@ scaleRing:SetVertexColor(1, 1, 1, 0.15)
 scaleRing:SetPoint("CENTER")
 
 local arrow = canvas:CreateTexture(nil, "OVERLAY", nil, 7)
-arrow:SetTexture("Interface\\Minimap\\MinimapArrow")
+arrow:SetTexture(ns.MEDIA .. "arrow")
 arrow:SetSize(28, 28)
 arrow:SetPoint("CENTER")
 
@@ -119,7 +119,7 @@ function Radar:Update(pos, st)
                 if p.kind == "guard" then
                     local fill = fills:Acquire()
                     fill:SetTexture(ns.MEDIA .. "disc")
-                    fill:SetVertexColor(1, 0.1, 0.1, 0.25)
+                    fill:SetVertexColor(1, 0.1, 0.1, 0.38)
                     Place(fill, 2 * r * ppy, x, y)
 
                     local ring = rings:Acquire()
@@ -129,7 +129,7 @@ function Radar:Update(pos, st)
 
                     local warn = rings:Acquire()
                     warn:SetTexture(ns.MEDIA .. "ring")
-                    warn:SetVertexColor(1, 0.85, 0, 0.45)
+                    warn:SetVertexColor(1, 0.85, 0, 0.75)
                     Place(warn, 2 * (r + s.warnYards) * ppy, x, y)
                 end
                 if d <= limit then

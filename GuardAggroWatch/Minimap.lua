@@ -27,12 +27,19 @@ local function UpdateIndoors()
     if checking then return end
     checking = true
     local zoom = Minimap:GetZoom()
+    if not GetCVar("minimapZoom") or not GetCVar("minimapInsideZoom") then
+        indoors = IsIndoors and IsIndoors() or false
+        checking = false
+        GAW:Update(true)
+        return
+    end
     if GetCVar("minimapZoom") == GetCVar("minimapInsideZoom") then
         Minimap:SetZoom(zoom < 2 and zoom + 1 or zoom - 1)
     end
     indoors = tonumber(GetCVar("minimapZoom")) ~= Minimap:GetZoom()
     Minimap:SetZoom(zoom)
     checking = false
+    GAW:Update(true)
 end
 overlay:RegisterEvent("MINIMAP_UPDATE_ZOOM")
 overlay:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -66,7 +73,7 @@ function Minimap_:Update(pos)
         if p.inst == pos.inst then
             local e, n = GAW:Offset(pos, p)
             local r = p.kind == "guard" and GAW:GuardRadius(p) or 0
-            if sqrt(e * e + n * n) - r <= diameter then
+            if sqrt(e * e + n * n) - r <= diameter / 2 then
                 if p.kind == "guard" then
                     local count = max(12, min(64, floor(2 * pi * r * ppy / 5)))
                     for k = 1, count do
