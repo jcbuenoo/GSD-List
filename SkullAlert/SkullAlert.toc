@@ -1,0 +1,8 @@
+## Interface: 20506, 20505
+## Title: SkullAlert
+## Notes: Raid-warning alert whenever a level ?? (skull) player of the opposing faction is detected near you.
+## Author: jcbuenoo
+## Version: 1.0.0
+## SavedVariables: SkullAlertDB
+
+SkullAlert.lua
