@@ -1,0 +1,22 @@
+## Interface: 20504, 20505
+## Title: Market Intel
+## Notes: Auction house price history, deals, BoE snipes, flips, posting advice, crafting profit and a sales ledger. Works alongside Auctionator and TSM.
+## Author: jcbuenoo
+## Version: 1.4.1
+## SavedVariables: MarketIntelDB
+## OptionalDeps: Auctionator, TradeSkillMaster
+
+Core.lua
+History.lua
+Analysis.lua
+Alerts.lua
+Integrations.lua
+Ledger.lua
+Advisor.lua
+Crafting.lua
+Snipe.lua
+Scanner.lua
+Minimap.lua
+Export.lua
+Tooltip.lua
+UI.lua
