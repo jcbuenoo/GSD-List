@@ -49,6 +49,7 @@ local function newObj(kind, parent)
         GetText = function(self) return self.text end,
         Show = function(self) self.shown = true end,
         Hide = function(self) self.shown = false end,
+        SetShown = function(self, v) self.shown = not not v end,
         IsShown = function(self) return self.shown end,
         SetScript = function(self, k, f) self.scripts[k] = f end,
         RegisterEvent = function(self, e) self.events[e] = true end,

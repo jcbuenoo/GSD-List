@@ -1,78 +1,39 @@
 local addonName, ns = ...
 
 local GetTime, UnitGUID, bit_band = GetTime, UnitGUID, bit.band
-local CombatLogGetCurrentEventInfo = CombatLogGetCurrentEventInfo
-local GetPlayerInfoByGUID = GetPlayerInfoByGUID
+local CombatLogGetCurrentEventInfo, GetPlayerInfoByGUID = CombatLogGetCurrentEventInfo, GetPlayerInfoByGUID
 local HOSTILE = COMBATLOG_OBJECT_REACTION_HOSTILE or 0x00000040
 local PLAYER = COMBATLOG_OBJECT_TYPE_PLAYER or 0x00000400
-
 local GetSpellInfo = GetSpellInfo or function(id)
     local info = C_Spell and C_Spell.GetSpellInfo(id)
     if info then return info.name, nil, info.iconID end
 end
 local GetSpellTexture = GetSpellTexture or (C_Spell and C_Spell.GetSpellTexture)
 
--- Seconds a CC is assumed to last if we never see it fade (target out of combat log range).
-local FAILSAFE_ACTIVE = 60
+local FAILSAFE_ACTIVE = 60 -- seconds a CC is assumed to last if we never see it fade (out of combat log range)
 local MAX_LEVEL = 3
-local MIN_LABEL_SIZE = 24 -- below this icon size the labels and the reset timer don't fit and are hidden
+local MIN_LABEL_SIZE = 24  -- below this icon size the labels and the reset timer don't fit and are hidden
+local QUESTION_MARK = "Interface\\Icons\\INV_Misc_QuestionMark"
 
 local DEFAULTS = {
     point = { "CENTER", "UIParent", "CENTER", 0, -150 },
-    locked = false,
-    scale = 1,
-    iconSize = 30,
-    maxRows = 8,
-    resetTime = ns.RESET_TIME,
-    showSelf = false,
-    showLabels = true,
+    locked = false, scale = 1, iconSize = 30, maxRows = 8, resetTime = ns.RESET_TIME,
+    showSelf = false, showLabels = true,
     categories = {}, -- [key] = false to hide
 }
 
--- Next-application colour: 50% (yellow), 25% (orange), immune (red)
-local LEVEL_COLORS = {
-    [1] = { 1.0, 0.85, 0.0 },
-    [2] = { 1.0, 0.45, 0.0 },
-    [3] = { 0.9, 0.1, 0.1 },
-}
+-- Next-application colour and text: 50% (yellow), 25% (orange), immune (red)
+local LEVEL_COLORS = { { 1.0, 0.85, 0.0 }, { 1.0, 0.45, 0.0 }, { 0.9, 0.1, 0.1 } }
 local LEVEL_TEXT = { "50%", "25%", "IMM" }
 
-local db
-local units = {}       -- [guid] = { name, class, cats = { [cat] = state } }
-local nameToCat = {}   -- fallback when the combat log gives spellID 0
-local catOrder = {}    -- [key] = display index
-local catInfo = {}     -- [key] = category entry
-local playerGUID
+local db, playerGUID
+local units = {}     -- [guid] = { name, class, lastUpdate, cats = { [cat] = state } }
+local nameToCat = {} -- fallback when the combat log gives spellID 0
+local catOrder, catInfo = {}, {}
+for i, c in ipairs(ns.CATEGORIES) do catOrder[c.key], catInfo[c.key] = i, c end
 
-for i, c in ipairs(ns.CATEGORIES) do
-    catOrder[c.key] = i
-    catInfo[c.key] = c
-end
-
-local function Print(msg)
-    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99GSD DR:|r " .. msg)
-end
-
-local function IsCategoryEnabled(cat)
-    return db.categories[cat] ~= false
-end
-
-local function ShortName(name)
-    return name and name:match("^[^-]+") or "?"
-end
-
-local function GetUnitEntry(guid, name)
-    local u = units[guid]
-    if not u then
-        u = { name = ShortName(name), cats = {} }
-        units[guid] = u
-    end
-    if not u.class and GetPlayerInfoByGUID then
-        local _, class = GetPlayerInfoByGUID(guid)
-        u.class = class
-    end
-    return u
-end
+local function Print(msg) DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99GSD DR:|r " .. msg) end
+local function IsCategoryEnabled(cat) return db.categories[cat] ~= false end
 
 -------------------------------------------------------------------------------
 -- DR state
@@ -80,7 +41,12 @@ end
 
 local function ApplyDR(guid, name, spellID, cat)
     local now = GetTime()
-    local u = GetUnitEntry(guid, name)
+    local u = units[guid]
+    if not u then
+        u = { name = name and name:match("^[^-]+") or "?", cats = {} }
+        units[guid] = u
+    end
+    if not u.class and GetPlayerInfoByGUID then u.class = select(2, GetPlayerInfoByGUID(guid)) end
     local e = u.cats[cat]
     -- A CC can't land on an immune target, so landing at MAX_LEVEL means the real
     -- (15-20s) reset already happened: start over instead of staying on "IMM".
@@ -90,10 +56,7 @@ local function ApplyDR(guid, name, spellID, cat)
         e = { level = 1, auras = {} }
         u.cats[cat] = e
     end
-    e.active = true
-    e.auras[spellID] = true
-    e.spellID = spellID
-    e.appliedAt = now
+    e.active, e.auras[spellID], e.spellID = true, true, spellID
     e.resetAt = now + FAILSAFE_ACTIVE + db.resetTime
     u.lastUpdate = now
 end
@@ -104,10 +67,9 @@ local function RemoveDR(guid, spellID, cat)
     if not e then return end
     e.auras[spellID] = nil
     if next(e.auras) then return end -- another aura of this category is still up
-    local now = GetTime()
     e.active = false
-    e.resetAt = now + db.resetTime
-    u.lastUpdate = now
+    e.resetAt = GetTime() + db.resetTime
+    u.lastUpdate = GetTime()
 end
 
 local function Prune(now)
@@ -121,9 +83,7 @@ local function Prune(now)
                 wipe(e.auras)
             end
         end
-        if not next(u.cats) then
-            units[guid] = nil
-        end
+        if not next(u.cats) then units[guid] = nil end
     end
 end
 
@@ -143,7 +103,6 @@ anchor:SetScript("OnDragStop", function(self)
     db.point = { p, "UIParent", rp, x, y }
 end)
 anchor:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
-anchor:SetBackdropColor(0, 0.6, 0.3, 0.6)
 anchor.text = anchor:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 anchor.text:SetPoint("CENTER")
 anchor.text:SetText("GSD DR Tracker (drag)")
@@ -185,7 +144,6 @@ local function CreateIcon(parent)
     overlay:SetAllPoints()
     overlay:SetFrameLevel(icon.cd:GetFrameLevel() + 2)
     icon.level = overlay:CreateFontString(nil, "OVERLAY")
-    icon.level:SetPoint("TOP", 0, -1)
     icon.timer = overlay:CreateFontString(nil, "OVERLAY")
     icon.timer:SetPoint("BOTTOM", 0, 1)
     icon.label = overlay:CreateFontString(nil, "OVERLAY")
@@ -194,24 +152,9 @@ local function CreateIcon(parent)
     return icon
 end
 
-local function GetRow(i)
-    local row = rows[i]
-    if row then return row end
-    row = CreateFrame("Frame", nil, anchor)
-    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.name:SetJustifyH("RIGHT")
-    row.icons = {}
-    rows[i] = row
-    return row
-end
-
-local function LabelsShown()
-    return db.showLabels and db.iconSize >= MIN_LABEL_SIZE
-end
-
 local function LayoutRow(row, i)
     local size = db.iconSize
-    local labels = LabelsShown()
+    local labels = db.showLabels and size >= MIN_LABEL_SIZE
     local rowHeight = labels and size + 12 or size + 2 -- room for the category label under the icon
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 94, -4 - (i - 1) * (rowHeight + 2))
@@ -224,22 +167,34 @@ local function LayoutRow(row, i)
         icon:ClearAllPoints()
         icon:SetPoint("TOPLEFT", row, "TOPLEFT", (j - 1) * (size + 3), 0)
         SetIconFonts(icon, size)
-        if labels then icon.label:Show() else icon.label:Hide() end
+        icon.label:SetShown(labels)
         -- small icons only have room for one line: keep the DR level, the sweep shows the time
+        local big = size >= MIN_LABEL_SIZE
         icon.level:ClearAllPoints()
-        if size >= MIN_LABEL_SIZE then
-            icon.level:SetPoint("TOP", 0, -1)
-            icon.timer:Show()
-        else
-            icon.level:SetPoint("CENTER", 0, 0)
-            icon.timer:Hide()
-        end
+        icon.level:SetPoint(big and "TOP" or "CENTER", 0, big and -1 or 0)
+        icon.timer:SetShown(big)
     end
+    row.layoutSize = size
+end
+
+local function GetRow(i, iconCount)
+    local row = rows[i]
+    if not row then
+        row = CreateFrame("Frame", nil, anchor)
+        row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.name:SetJustifyH("RIGHT")
+        row.icons = {}
+        rows[i] = row
+    end
+    local grew = #row.icons < iconCount
+    for j = #row.icons + 1, iconCount do row.icons[j] = CreateIcon(row) end
+    if grew or row.layoutSize ~= db.iconSize then LayoutRow(row, i) end
+    return row
 end
 
 local function UpdateIcon(icon, cat, e, now)
     if icon.spellID ~= e.spellID then
-        icon.tex:SetTexture((GetSpellTexture and GetSpellTexture(e.spellID)) or "Interface\\Icons\\INV_Misc_QuestionMark")
+        icon.tex:SetTexture((GetSpellTexture and GetSpellTexture(e.spellID)) or QUESTION_MARK)
         icon.spellID = e.spellID
     end
     if icon.shownLevel ~= e.level then
@@ -250,48 +205,35 @@ local function UpdateIcon(icon, cat, e, now)
         icon.shownLevel = e.level
     end
     SetText(icon.label, catInfo[cat].label)
-    if e.active then
-        -- CC is still on the target: the reset timer hasn't started yet
-        SetText(icon.timer, "")
-        if icon.cdStart then
-            icon.tex:SetDesaturated(false)
-            icon.cd:SetCooldown(0, 0)
-            icon.cdStart = nil
-        end
-    else
-        SetText(icon.timer, tostring(math.ceil(e.resetAt - now)))
-        local start = e.resetAt - db.resetTime
-        if icon.cdStart ~= start then
-            icon.tex:SetDesaturated(true)
-            icon.cd:SetCooldown(start, db.resetTime)
-            icon.cdStart = start
-        end
+    -- while the CC is still on the target the reset timer hasn't started yet
+    SetText(icon.timer, e.active and "" or tostring(math.ceil(e.resetAt - now)))
+    local start = not e.active and e.resetAt - db.resetTime or nil
+    if icon.cdStart ~= start then
+        icon.tex:SetDesaturated(start ~= nil)
+        icon.cd:SetCooldown(start or 0, start and db.resetTime or 0)
+        icon.cdStart = start
     end
     icon:Show()
 end
 
-local sortList, sortPool = {}, {}
+local sortList, sortPool, catList = {}, {}, {}
 local function SortUnits(a, b)
     if a.priority ~= b.priority then return a.priority < b.priority end
     return (a.u.lastUpdate or 0) > (b.u.lastUpdate or 0)
 end
-
-local catList = {}
 local function SortCats(a, b) return catOrder[a] < catOrder[b] end
 
 local function Render()
     local now = GetTime()
     Prune(now)
-
     wipe(sortList)
     local targetGUID, focusGUID = UnitGUID("target"), UnitGUID("focus")
     for guid, u in pairs(units) do
         local n = #sortList + 1
-        local item = sortPool[n] or {}
-        sortPool[n] = item
+        local item = sortPool[n] or {} -- pooled: no garbage per tick
+        sortPool[n], sortList[n] = item, item
         item.guid, item.u = guid, u
         item.priority = (guid == targetGUID and 1) or (guid == focusGUID and 2) or 3
-        sortList[n] = item
     end
     table.sort(sortList, SortUnits)
 
@@ -306,24 +248,14 @@ local function Render()
         if #catList > 0 then
             shown = shown + 1
             table.sort(catList, SortCats)
-            local row = GetRow(shown)
-            for j = #row.icons + 1, #catList do
-                row.icons[j] = CreateIcon(row)
-                row.needsLayout = true
-            end
-            if row.needsLayout or row.layoutSize ~= db.iconSize then
-                LayoutRow(row, shown)
-                row.needsLayout, row.layoutSize = nil, db.iconSize
-            end
+            local row = GetRow(shown, #catList)
             SetText(row.name, item.guid == targetGUID and ("> " .. u.name) or u.name)
             if row.shownClass ~= u.class then
                 local cc = u.class and RAID_CLASS_COLORS[u.class]
-                if cc then row.name:SetTextColor(cc.r, cc.g, cc.b) else row.name:SetTextColor(1, 1, 1) end
+                row.name:SetTextColor(cc and cc.r or 1, cc and cc.g or 1, cc and cc.b or 1)
                 row.shownClass = u.class
             end
-            for j, cat in ipairs(catList) do
-                UpdateIcon(row.icons[j], cat, u.cats[cat], now)
-            end
+            for j, cat in ipairs(catList) do UpdateIcon(row.icons[j], cat, u.cats[cat], now) end
             for j = #catList + 1, #row.icons do row.icons[j]:Hide() end
             row:Show()
         end
@@ -332,48 +264,14 @@ local function Render()
 end
 
 local function ApplyLayout()
-    anchor:ClearAllPoints()
     local p = db.point
+    anchor:ClearAllPoints()
     anchor:SetPoint(p[1], UIParent, p[3], p[4], p[5])
     anchor:SetScale(db.scale)
     for i, row in ipairs(rows) do LayoutRow(row, i) end
-    if db.locked then
-        anchor:EnableMouse(false)
-        anchor:SetBackdropColor(0, 0, 0, 0)
-        anchor.text:Hide()
-    else
-        anchor:EnableMouse(true)
-        anchor:SetBackdropColor(0, 0.6, 0.3, 0.6)
-        anchor.text:Show()
-    end
-end
-
--------------------------------------------------------------------------------
--- Events
--------------------------------------------------------------------------------
-
-local function IsTrackedDest(guid, flags)
-    if guid == playerGUID then return db.showSelf end
-    return bit_band(flags, HOSTILE) ~= 0 and bit_band(flags, PLAYER) ~= 0
-end
-
-local function OnCombatLog()
-    local _, event, _, _, _, _, _, destGUID, destName, destFlags, _, spellID, spellName = CombatLogGetCurrentEventInfo()
-    if event == "UNIT_DIED" then
-        -- Feign Death is logged as UNIT_DIED; keep hunters' DRs
-        local u = units[destGUID]
-        if u and u.class ~= "HUNTER" then units[destGUID] = nil end
-        return
-    end
-    if event ~= "SPELL_AURA_APPLIED" and event ~= "SPELL_AURA_REFRESH" and event ~= "SPELL_AURA_REMOVED" then return end
-    local cat = ns.SPELLS[spellID] or (spellID == 0 and nameToCat[spellName])
-    if not cat or not IsTrackedDest(destGUID, destFlags) then return end
-    if destGUID == playerGUID then destName = "You" end
-    if event == "SPELL_AURA_REMOVED" then
-        RemoveDR(destGUID, spellID, cat)
-    else
-        ApplyDR(destGUID, destName, spellID, cat)
-    end
+    anchor:EnableMouse(not db.locked)
+    anchor:SetBackdropColor(0, 0.6, 0.3, db.locked and 0 or 0.6)
+    anchor.text:SetShown(not db.locked)
 end
 
 local ticker
@@ -388,12 +286,38 @@ local function StartTicker()
     end)
 end
 
+-------------------------------------------------------------------------------
+-- Events
+-------------------------------------------------------------------------------
+
+local function OnCombatLog()
+    local _, event, _, _, _, _, _, destGUID, destName, destFlags, _, spellID, spellName = CombatLogGetCurrentEventInfo()
+    if event == "UNIT_DIED" then
+        -- Feign Death is logged as UNIT_DIED; keep hunters' DRs
+        local u = units[destGUID]
+        if u and u.class ~= "HUNTER" then units[destGUID] = nil end
+        return
+    end
+    if event ~= "SPELL_AURA_APPLIED" and event ~= "SPELL_AURA_REFRESH" and event ~= "SPELL_AURA_REMOVED" then return end
+    local cat = ns.SPELLS[spellID] or (spellID == 0 and nameToCat[spellName])
+    if not cat then return end
+    if destGUID == playerGUID then
+        if not db.showSelf then return end
+        destName = "You"
+    elseif bit_band(destFlags, HOSTILE) == 0 or bit_band(destFlags, PLAYER) == 0 then
+        return
+    end
+    if event == "SPELL_AURA_REMOVED" then
+        RemoveDR(destGUID, spellID, cat)
+    else
+        ApplyDR(destGUID, destName, spellID, cat)
+    end
+end
+
 local frame = CreateFrame("Frame")
-frame:RegisterEvent("ADDON_LOADED")
-frame:RegisterEvent("PLAYER_LOGIN")
-frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-frame:RegisterEvent("PLAYER_TARGET_CHANGED")
+for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "COMBAT_LOG_EVENT_UNFILTERED", "PLAYER_TARGET_CHANGED" }) do
+    frame:RegisterEvent(e)
+end
 frame:SetScript("OnEvent", function(_, event, arg1)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
         OnCombatLog()
@@ -414,8 +338,8 @@ frame:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "PLAYER_ENTERING_WORLD" then
         wipe(units) -- new zone / arena: old DRs are meaningless
         Render()
-    elseif event == "PLAYER_TARGET_CHANGED" then
-        if next(units) then Render() end
+    elseif event == "PLAYER_TARGET_CHANGED" and next(units) then
+        Render()
     end
 end)
 
@@ -423,35 +347,32 @@ end)
 -- Test mode & slash commands
 -------------------------------------------------------------------------------
 
+-- { category, spellID, level, active, seconds until reset }
+local TEST_UNITS = {
+    { "Healbot", "PRIEST", { { "incapacitate", 11297, 1, false, 18 }, { "stun", 1833, 2, false, 12 }, { "kidney_shot", 8643, 1, true } } },
+    { "Facemelter", "MAGE", { { "stun", 1833, 3, false, 7 }, { "disorient", 2094, 1, false, 15 } } },
+    { "Bubblegum", "PALADIN", { { "fear", 5246, 1, false, 19 }, { "root", 27088, 2, false, 10 } } },
+}
+
 local function RunTest()
     local now = GetTime()
-    local function fake(guid, name, class, list)
-        local u = { name = name, class = class, cats = {}, lastUpdate = now }
-        for _, d in ipairs(list) do
-            u.cats[d[1]] = {
-                level = d[3], spellID = d[2], auras = {}, appliedAt = now,
-                active = d[4] or false,
-                resetAt = d[4] and (now + 8 + db.resetTime) or (now + d[5]),
-            }
+    for i, t in ipairs(TEST_UNITS) do
+        local u = { name = t[1], class = t[2], cats = {}, lastUpdate = now }
+        for _, d in ipairs(t[3]) do
+            u.cats[d[1]] = { spellID = d[2], level = d[3], active = d[4], auras = {},
+                resetAt = d[4] and (now + 8 + db.resetTime) or (now + d[5]) }
         end
-        units[guid] = u
+        units["test-" .. i] = u
     end
-    fake("test-1", "Healbot", "PRIEST", {
-        { "incapacitate", 11297, 1, false, 18 },  -- Sapped, 50% next
-        { "stun", 1833, 2, false, 12 },           -- Cheap Shot + HoJ, 25% next
-        { "kidney_shot", 8643, 1, true },         -- Kidney currently on target
-    })
-    fake("test-2", "Facemelter", "MAGE", {
-        { "stun", 1833, 3, false, 7 },            -- immune to stuns
-        { "disorient", 2094, 1, false, 15 },      -- Blinded
-    })
-    fake("test-3", "Bubblegum", "PALADIN", {
-        { "fear", 5246, 1, false, 19 },
-        { "root", 27088, 2, false, 10 },
-    })
     StartTicker()
     Print("Test bars shown (they expire on their own).")
 end
+
+-- numeric settings: command = { db key, min, max, whole number }
+local NUMBERS = {
+    scale = { "scale", 0.5, 3 }, size = { "iconSize", 16, 64, true },
+    rows = { "maxRows", 1, 20, true }, reset = { "resetTime", 15, 20 },
+}
 
 local function Help()
     Print("commands:")
@@ -468,21 +389,14 @@ end
 SLASH_GSDDR1 = "/gdr"
 SlashCmdList.GSDDR = function(msg)
     local cmd, arg = (msg or ""):lower():match("^(%S*)%s*(.-)$")
-    local n = tonumber(arg)
-    if cmd == "lock" then
-        db.locked = true
-    elseif cmd == "unlock" then
-        db.locked = false
+    local n, num = tonumber(arg), NUMBERS[cmd]
+    if num and n then
+        n = math.min(num[3], math.max(num[2], n))
+        db[num[1]] = num[4] and math.floor(n) or n
+    elseif cmd == "lock" or cmd == "unlock" then
+        db.locked = cmd == "lock"
     elseif cmd == "test" then
         RunTest()
-    elseif cmd == "scale" and n then
-        db.scale = math.min(3, math.max(0.5, n))
-    elseif cmd == "size" and n then
-        db.iconSize = math.min(64, math.max(16, math.floor(n)))
-    elseif cmd == "rows" and n then
-        db.maxRows = math.min(20, math.max(1, math.floor(n)))
-    elseif cmd == "reset" and n then
-        db.resetTime = math.min(20, math.max(15, n))
     elseif cmd == "self" then
         db.showSelf = not db.showSelf
         Print("Track yourself: " .. tostring(db.showSelf))
@@ -491,7 +405,7 @@ SlashCmdList.GSDDR = function(msg)
         Print("Labels: " .. tostring(db.showLabels))
     elseif cmd == "preset" and (arg == "all" or arg == "rogue") then
         for _, c in ipairs(ns.CATEGORIES) do
-            db.categories[c.key] = (arg == "all" or ns.ROGUE_PRESET[c.key]) and true or false
+            db.categories[c.key] = arg == "all" or ns.ROGUE_PRESET[c.key] == true
         end
         Print("Preset: " .. arg)
     elseif cmd == "cats" then
