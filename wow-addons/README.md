@@ -9,6 +9,8 @@ Two standalone, dependency-free addons. Each one is a movable bar with one row p
 
 TOC interface: `20506, 20505` (2.5.6 and 2.5.5 Anniversary clients).
 
+Each addon folder also has its own README with the full feature list and command reference: [GSD_DRTracker](GSD_DRTracker/README.md), [GSD_EnemyCDs](GSD_EnemyCDs/README.md).
+
 ## Install
 
 Copy both folders into `World of Warcraft\_anniversary_\Interface\AddOns\`, so you end up with
