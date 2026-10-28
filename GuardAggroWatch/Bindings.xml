@@ -1,0 +1,7 @@
+<Bindings>
+    <Binding name="GAW_MARK_GUARD" header="GUARDAGGROWATCH">GuardAggroWatch:MarkGuard()</Binding>
+    <Binding name="GAW_MARK_EDGE">GuardAggroWatch:AddMark("edge")</Binding>
+    <Binding name="GAW_MARK_SAFE">GuardAggroWatch:AddMark("safe")</Binding>
+    <Binding name="GAW_UNDO">GuardAggroWatch:Undo()</Binding>
+    <Binding name="GAW_TOGGLE_RADAR">GuardAggroWatch:ToggleSetting("radarShown")</Binding>
+</Bindings>

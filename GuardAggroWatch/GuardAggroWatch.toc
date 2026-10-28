@@ -1,0 +1,11 @@
+## Interface: 20506, 20505
+## Title: Guard Aggro Watch
+## Notes: Mark city guards, see their aggro rings on a radar/minimap/world map, and record blind spots.
+## Author: jcbuenoo
+## Version: 1.1.0
+## SavedVariables: GuardAggroWatchDB
+
+Core.lua
+Radar.lua
+Minimap.lua
+WorldMap.lua
