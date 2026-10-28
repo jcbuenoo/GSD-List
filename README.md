@@ -1,11 +1,12 @@
-# GSD-List
-GSD List
-
-## GSD List — WoW TBC Classic addon
+# GSD List — WoW TBC Classic addon
 
 A lightweight in-game notepad with nested note pages, search, and an optional
 to-do list. It uses only the game's own art, fonts, frame templates, menus and
 popups, so it looks like the stock UI. It has no libraries or external files.
+
+**Player guide (core features and every command):** [`GSDList/README.md`](GSDList/README.md).
+That file also ships inside the addon zip. This page covers the same features in
+brief, plus development notes and the changelog.
 
 ### Install
 
@@ -15,6 +16,7 @@ popups, so it looks like the stock UI. It has no libraries or external files.
 ```
 World of Warcraft/_anniversary_/Interface/AddOns/GSDList/GSDList.toc
 World of Warcraft/_anniversary_/Interface/AddOns/GSDList/GSDList.lua
+World of Warcraft/_anniversary_/Interface/AddOns/GSDList/README.md
 ```
 
 Use `_classic_` instead of `_anniversary_` if that's the folder your TBC client uses.
@@ -85,6 +87,7 @@ When updating, replace the whole `GSDList` folder. Your notes and tasks are kept
 | `/gsd todo` | Turn the to-do list on or off |
 | `/gsd minimap` | Show or hide the minimap icon |
 | `/gsd reset` | Reset the window and icon positions |
+| `/gsd help` | List all commands in chat |
 
 Notes and tasks are shared by every character on the account (`SavedVariables: GSDListDB`).
 
@@ -114,6 +117,7 @@ checked against the game's file list.
 ### Changelog
 
 - **2.1.0**
+  - Added a player README (`GSDList/README.md`) that ships inside the zip.
   - Search no longer matches the hidden parts of item links and colour codes.
   - Search results refresh if you edit the note while search is open.
   - Ticking a second task while the confirmation is open no longer leaves the first one ticked.
