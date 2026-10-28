@@ -2,7 +2,7 @@
 local ADDON, ns = ...
 
 ns.name = ADDON or "MarketIntel"
-ns.version = "1.4.0"
+ns.version = "1.4.1"
 
 local floor, format, tostring, tonumber, type, pairs = math.floor, string.format, tostring, tonumber, type, pairs
 
@@ -430,12 +430,16 @@ function ns.ParseItemAndPrice(rest)
 	if link then
 		name = link:match("|h%[(.-)%]|h")
 	else
-		-- a trailing token that parses as money is the price
-		local head, tail = rest:match("^(.-)%s+(%S+)$")
-		if head and ns.ParseMoney(tail) then
-			name, after = head, tail
-		else
-			name, after = rest, ""
+		-- the longest run of trailing words that reads as money is the price ("12g 50s")
+		local words = {}
+		for w in rest:gmatch("%S+") do words[#words + 1] = w end
+		name, after = rest, ""
+		for i = 2, #words do
+			local tail = table.concat(words, " ", i)
+			if ns.ParseMoney(tail) then
+				name, after = table.concat(words, " ", 1, i - 1), tail
+				break
+			end
 		end
 	end
 	return name, ns.ParseMoney(after), link

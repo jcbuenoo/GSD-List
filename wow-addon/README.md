@@ -4,6 +4,8 @@ Market Intel records auction house prices over time and uses them to flag bargai
 
 It never buys, posts or cancels anything: it records prices and makes suggestions.
 
+## Core features
+
 - **Price history:** a daily record of every item you see on the AH, with charts, averages, trend, volatility and the best weekday to sell or buy.
 - **Deal alerts:** listings far below the item's normal price, plus your own watchlist price targets.
 - **BoE snipe:** blue/epic gear (required level 15-55) that sells regularly in your region, listed well below its normal price.
@@ -18,12 +20,14 @@ It never buys, posts or cancels anything: it records prices and makes suggestion
 
 ## Install
 
-1. Download `dist/MarketIntel-1.4.0.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
+1. Download `dist/MarketIntel-1.4.1.zip` and unzip it into `World of Warcraft/_anniversary_/Interface/AddOns/`. It unpacks into a `MarketIntel` folder. The client folder may be named differently, such as `_classic_`.
 2. Restart the game. If the addon shows as "out of date", tick **Load out of date AddOns** on the character-select AddOns screen. To see your client's interface number, run `/dump select(4, GetBuildInfo())`. Then update the `## Interface:` line in `MarketIntel.toc` to match.
 
 **Updating:** exit the game, delete the old `Interface/AddOns/MarketIntel` folder, and unzip the new one in its place. Your price history, ledger, watchlist and settings are kept: they're saved separately in `WTF/Account/<ACCOUNT>/SavedVariables/MarketIntel.lua`.
 
 ## What's new
+
+**1.4.1**: clearer READMEs (core features and a full command table). Fixed `/mi watch <item> 12g 50s`, which read the "12g" as part of the item name.
 
 **1.4.0**: resizable window.
 - **Drag the grip** in the window's bottom-right corner to shrink or grow it, from 50% to 125%, so it fits beside the auction house on smaller screens. The whole window scales, so every tab keeps its layout.
@@ -184,21 +188,24 @@ Drag the grip in the window's bottom-right corner to make the whole window small
 
 ## Commands
 
-```
-/mi                      open or close the window (there is also a button next to the AH window)
-/mi deals|depth|history|watch|settings
-/mi watch <item or shift-click link> [max price, e.g. 12g or 12g50s]
-/mi unwatch <item>
-/mi scan                 scan the watchlist (AH must be open)
-/mi bags                 depth check for your bags
-/mi import               copy Auctionator's price history
-/mi snipe                BoE snipe scan (AH open)
-/mi flips | crafting | ledger
-/mi post <item>          suggested posting price
-/mi minimap              show or hide the minimap button
-/mi size <50-125>        window size in % (or drag the bottom-right corner)
-/mi stats | purge | reset
-```
+`/marketintel` works everywhere `/mi` does.
+
+| Command | What it does |
+|---|---|
+| `/mi` | Open or close the window. Also: the minimap button, or the **Market Intel** button next to the AH |
+| `/mi deals`, `snipe`, `flips`, `depth`, `history`, `crafting`, `ledger`, `watch`, `settings` | Open that tab. `/mi snipe` also runs a BoE snipe scan when the AH is open |
+| `/mi scan` | Search every watchlist item, all pages (AH must be open) |
+| `/mi watch <item or shift-click link> [price]` | Add to the watchlist. Price like `20g`, `12g 50s` or `75s`; a bare number means gold |
+| `/mi unwatch <item>` | Remove from the watchlist |
+| `/mi post <item>` | Suggested posting price and why |
+| `/mi bags` | Market depth check for everything in your bags |
+| `/mi import` | Copy Auctionator's price history again |
+| `/mi size <50-125>` | Window size in %. Or drag the window's bottom-right corner |
+| `/mi minimap` | Show or hide the minimap button |
+| `/mi stats` | How many items, snapshots and daily summaries are stored |
+| `/mi purge` | Compact old data now (it also happens at every login) |
+| `/mi reset` | Delete all price history for this auction house (asks first) |
+| `/mi help` | List all commands in game |
 
 ## Tests
 

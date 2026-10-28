@@ -1,8 +1,23 @@
-MARKET INTEL 1.4.0 - auction house helper for WoW TBC Classic
+MARKET INTEL 1.4.1 - auction house helper for WoW TBC Classic
 =============================================================
 
 Works alongside Auctionator and TradeSkillMaster (TSM). It never buys, posts
 or cancels anything for you: it only records prices and makes suggestions.
+
+CORE FEATURES
+-------------
+- Price history for every item you see on the auction house, starting
+  from Auctionator's history so it works from day one
+- Deal alerts: listings far below their normal price, plus watchlist
+  price targets
+- BoE Snipe: cheap blue/epic gear (required level 15-55) that sells
+  regularly in your region
+- Flip finder: cheap auctions you could buy and relist, with profit/risk
+- Posting advisor: what to post at, or whether to hold
+- Market depth: Flooded / Crowded / Normal / Thin, plus price wars
+- Crafting profit for the recipes you starred in TSM
+- Sales ledger read from your auction mail
+- Minimap button, CSV export, big on-screen alerts, resizable window
 
 INSTALL
 -------
@@ -72,20 +87,25 @@ deals saving 20g+) also show a raid-warning style message in the middle of
 the screen and flash the taskbar icon if the game is in the background.
 The minimap button shows how many alerts arrived since you last looked.
 
-COMMANDS
+COMMANDS  (/marketintel works too)
 --------
 /mi                    open or close the window
-/mi deals | snipe | flips | depth | history | crafting | ledger | watch | settings
-/mi snipe              run the BoE snipe scan (auction house open)
-/mi scan               scan your watchlist (auction house open)
+/mi deals              open a tab; also: snipe, flips, depth, history,
+                       crafting, ledger, watch, settings
+/mi snipe              BoE Snipe tab, and runs a snipe scan if the AH is open
+/mi scan               search every watchlist item (auction house open)
 /mi watch <item> 20g   alert when the item is at or below 20g
-/mi unwatch <item>
-/mi post <item>        suggested posting price
+                       (price like 20g, 12g 50s or 75s; shift-click links work)
+/mi unwatch <item>     remove from the watchlist
+/mi post <item>        suggested posting price and why
 /mi bags               depth check for everything in your bags
 /mi import             copy Auctionator's price history again
+/mi size 75            window size in % (50-125), or drag the corner grip
 /mi minimap            show or hide the minimap button
-/mi size 75            window size in % (50-125)
-/mi stats | purge | reset | help
+/mi stats              how much data is stored
+/mi purge              compact old data now (also done at every login)
+/mi reset              delete this auction house's price history (asks first)
+/mi help               list all commands in game
 
 GOOD TO KNOW
 ------------
@@ -104,6 +124,8 @@ GOOD TO KNOW
 
 WHAT'S NEW
 ----------
+1.4.1  Fixed /mi watch with a price like "12g 50s" (the "12g" was read as
+       part of the item name). Core features and full command list here.
 1.4.0  Resizable window: drag the bottom-right corner, use Settings, or
        /mi size 75. Fits beside the auction house on smaller screens.
 1.3.2  Fixed (found in real game data): items saved without a name during
