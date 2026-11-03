@@ -126,6 +126,31 @@ input[type=checkbox]{width:auto;min-height:0;accent-color:var(--amber)}
 .bridge .br.tot{border-bottom:0;border-top:1px solid var(--line2);font-weight:700;padding-top:8px}
 .bridge .br span:last-child{font-variant-numeric:tabular-nums;text-align:right}
 
+/* ledger (from Surandina Bloom-Line) */
+.pill.Paid,.pill.Exact,.pill.Verified{background:var(--ok-bg);color:var(--ok)}
+.pill.Open{background:var(--bad-bg);color:var(--bad)}
+.pill.Partial,.pill.Splits{background:var(--warn-bg);color:var(--warn)}
+.pill.Unverified{background:var(--chip);color:var(--muted)}
+tr[data-row]{cursor:pointer;transition:background .15s}
+tr[data-row]:hover td{background:rgba(255,162,74,.09)}
+th[data-sort]{cursor:pointer}
+#chart{position:relative}
+#chart svg{touch-action:pan-y;cursor:crosshair;display:block}
+.trace{filter:drop-shadow(0 0 4px rgba(255,162,74,.7))}
+.go .trace{stroke-dasharray:1;stroke-dashoffset:1;animation:draw 1.7s ease-out forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.pay-dot{fill:var(--leaf);filter:drop-shadow(0 0 5px var(--leaf))}
+body.fx .pay-dot{animation:pulse 2.4s ease-in-out infinite}
+svg text{fill:var(--muted);font-size:10.5px;font-family:var(--mono)}
+#xr{font:12px var(--mono);color:var(--amber);min-height:18px;margin-top:4px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:8px 14px;font-size:14px;align-items:center}
+.kv .big{font:700 16px var(--mono);text-align:right}
+.preview{font-size:13px;background:var(--ok-bg);border:1px solid rgba(125,220,106,.25);border-radius:3px;padding:8px 10px;margin:4px 0 10px;min-height:40px}
+.preview.warnbox{background:var(--warn-bg);border-color:rgba(255,211,106,.4)}
+#toast{display:flex;align-items:center;gap:12px}
+#toast[hidden]{display:none!important}
+#toast button{min-height:26px;padding:2px 10px}
+
 /* intake */
 .bays{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:12px}
 label.drop{display:grid;gap:6px;align-content:start;cursor:pointer;min-height:170px;transition:background .2s,box-shadow .2s}
@@ -227,7 +252,8 @@ body.ambient .wrap{opacity:0;pointer-events:none}
   </div>
   <div class="actions">
     <button class="primary" id="btnUp" type="button">+ Upload documents</button>
-    <button id="btnLine" type="button">+ Manual line</button>
+    <button id="btnPay" type="button" title="Record payment (P)">+ Record payment</button>
+    <button id="btnInv" type="button" title="Add invoice (I)">+ Add invoice</button>
     <button class="ghost" id="btnAmb" type="button" title="Ambient view (A)">⛶ Ambient</button>
     <button class="ghost" id="btnFx" type="button" aria-pressed="true" title="Toggle animated background">FX: on</button>
   </div>
@@ -252,12 +278,21 @@ body.ambient .wrap{opacity:0;pointer-events:none}
   <div class="card"><div class="k"><span class="src K">K</span>Komet says</div><div class="v k-col" id="v-k">$0.00</div><div class="s" id="s-k"></div></div>
   <div class="card"><div class="k">Open exceptions</div><div class="v" id="v-x">0</div><div class="s" id="s-x"></div></div>
 </section>
+<section class="cards" aria-label="Ledger totals" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+  <div class="card"><div class="k">Total invoiced</div><div class="v" id="v-inv">$0.00</div><div class="s" id="s-inv"></div></div>
+  <div class="card"><div class="k">Total paid</div><div class="v" id="v-paid">$0.00</div><div class="s" id="s-paid"></div></div>
+  <div class="card"><div class="k">Last payment</div><div class="v" id="v-last">—</div><div class="s" id="s-last"></div></div>
+  <div class="card"><div class="k">Oldest open invoice</div><div class="v" id="v-old">—</div><div class="s" id="s-old"></div></div>
+</section>
 
 <nav class="tabs" role="tablist" aria-label="Channels">
   <button class="tab" role="tab" id="tab-overview" aria-controls="t-overview" data-tab="overview" aria-selected="true" type="button"><span class="n">01</span>Overview</button>
   <button class="tab" role="tab" id="tab-intake" aria-controls="t-intake" data-tab="intake" aria-selected="false" tabindex="-1" type="button"><span class="n">02</span>Intake<span class="badge" id="intakeBadge" hidden></span></button>
   <button class="tab" role="tab" id="tab-match" aria-controls="t-match" data-tab="match" aria-selected="false" tabindex="-1" type="button"><span class="n">03</span>Three-way match</button>
-  <button class="tab" role="tab" id="tab-files" aria-controls="t-files" data-tab="files" aria-selected="false" tabindex="-1" type="button"><span class="n">04</span>Files &amp; suppliers</button>
+  <button class="tab" role="tab" id="tab-invoices" aria-controls="t-invoices" data-tab="invoices" aria-selected="false" tabindex="-1" type="button"><span class="n">04</span>Invoices</button>
+  <button class="tab" role="tab" id="tab-payments" aria-controls="t-payments" data-tab="payments" aria-selected="false" tabindex="-1" type="button"><span class="n">05</span>Payments</button>
+  <button class="tab" role="tab" id="tab-reconcile" aria-controls="t-reconcile" data-tab="reconcile" aria-selected="false" tabindex="-1" type="button"><span class="n">06</span>Reconcile</button>
+  <button class="tab" role="tab" id="tab-files" aria-controls="t-files" data-tab="files" aria-selected="false" tabindex="-1" type="button"><span class="n">07</span>Files &amp; suppliers</button>
 </nav>
 
 <section id="t-overview" role="tabpanel" aria-labelledby="tab-overview">
@@ -271,6 +306,16 @@ body.ambient .wrap{opacity:0;pointer-events:none}
     </ul>
   </details>
   <div class="card" style="margin-bottom:12px"><h2>Suppliers · three-way balance</h2><div class="scroll" id="supTbl"></div></div>
+  <div class="stack" style="margin-bottom:12px">
+    <div class="card">
+      <div class="toolbar" style="justify-content:space-between;margin-bottom:4px">
+        <h2 style="margin:0">Balance trace</h2>
+        <span class="toolbar" style="margin:0"><select id="chartSup" aria-label="Chart supplier"></select><select id="range" aria-label="Chart range"><option value="3">Last 3 months</option><option value="6">Last 6 months</option><option value="12" selected>Last 12 months</option><option value="0">All time</option></select></span>
+      </div>
+      <div id="chart"></div>
+    </div>
+    <div class="card"><h2>Open invoices · oldest first</h2><div class="scroll" id="openTbl"></div></div>
+  </div>
   <div class="grid2">
     <div class="card"><h2>Action queue · biggest dollar impact first</h2><div class="scroll" id="queue"></div></div>
     <div class="stack">
@@ -321,14 +366,44 @@ body.ambient .wrap{opacity:0;pointer-events:none}
   <div id="matchBody"></div>
 </section>
 
-<section id="t-files" role="tabpanel" aria-labelledby="tab-files" hidden>
-  <div class="card" style="margin-bottom:12px"><h2>Uploaded documents</h2><div class="scroll" id="docTbl"></div></div>
-  <div class="grid2">
-    <div class="card"><h2>Suppliers</h2><div class="scroll" id="supEdit"></div><p class="hint">Merge two names when the same farm came in spelled differently (for example a Komet vendor name and the name on the farm's letterhead).</p></div>
-    <div class="card"><h2>Backup</h2><div id="backup"></div></div>
+<section id="t-invoices" role="tabpanel" aria-labelledby="tab-invoices" hidden>
+  <div class="card">
+    <div class="toolbar">
+      <select id="invSup" aria-label="Supplier"></select>
+      <button class="chip" data-f="all" aria-pressed="true" type="button">All</button>
+      <button class="chip" data-f="open" aria-pressed="false" type="button">Open / partial</button>
+      <button class="chip" data-f="paid" aria-pressed="false" type="button">Paid</button>
+      <input id="q" type="search" placeholder="Search invoice # or AWB" aria-label="Search invoices">
+      <select id="yr" aria-label="Year"></select>
+      <span style="flex:1"></span>
+      <button class="small" id="expInv" type="button">Export CSV</button>
+    </div>
+    <div class="scroll" style="max-height:620px;overflow-y:auto" id="invTbl"></div>
   </div>
 </section>
-<div class="kbd"><b>1–4</b> channels · <b>U</b> upload · <b>A</b> ambient · <b>Esc</b> close</div>
+
+<section id="t-payments" role="tabpanel" aria-labelledby="tab-payments" hidden>
+  <div class="card">
+    <div class="toolbar"><select id="paySup" aria-label="Supplier"></select><h2 style="margin:0">Payments made</h2><span style="flex:1"></span><button class="small" id="expPay" type="button">Export CSV</button></div>
+    <div class="scroll" id="payTbl"></div>
+  </div>
+</section>
+
+<section id="t-reconcile" role="tabpanel" aria-labelledby="tab-reconcile" hidden>
+  <div class="toolbar"><select id="recSup" aria-label="Supplier"></select></div>
+  <div class="grid2">
+    <div class="card"><h2>1 · Tie-out to the farm's statement</h2><div id="tie"></div></div>
+    <div class="card"><h2>2 · Bank verification</h2><div id="verif"></div></div>
+  </div>
+  <div class="card" style="margin-top:12px"><h2>3 · Payments that don't land on an invoice boundary</h2><div id="bounds"></div></div>
+  <div class="card" style="margin-top:12px"><h2>4 · Backup</h2><div id="backup"></div></div>
+</section>
+
+<section id="t-files" role="tabpanel" aria-labelledby="tab-files" hidden>
+  <div class="card" style="margin-bottom:12px"><h2>Uploaded documents</h2><div class="scroll" id="docTbl"></div></div>
+  <div class="card"><h2>Suppliers</h2><div class="scroll" id="supEdit"></div><p class="hint">Merge two names when the same farm came in spelled differently (for example a Komet vendor name and the name on the farm's letterhead).</p></div>
+</section>
+<div class="kbd"><b>1–7</b> channels · <b>P</b> record payment · <b>I</b> add invoice · <b>U</b> upload · <b>A</b> ambient · <b>Esc</b> close</div>
 </div>
 
 <dialog id="dlg" aria-labelledby="dlgTitle"><form method="dialog" id="frm" autocomplete="off"></form></dialog>
@@ -371,7 +446,11 @@ function toISO(v){
   const t=Date.parse(s); if(!isNaN(t)){ const d=new Date(t); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
   return '';
 }
-function toast(msg){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast._h); toast._h=setTimeout(()=>{t.hidden=true;},3200); }
+function toast(msg, undo){
+  const t=$('toast'); t.innerHTML=`<span>${esc(msg)}</span>`;
+  if(undo){ const b=document.createElement('button'); b.type='button'; b.textContent='Undo'; b.onclick=()=>{ t.hidden=true; undo(); }; t.appendChild(b); }
+  t.hidden=false; clearTimeout(toast._h); toast._h=setTimeout(()=>{t.hidden=true;}, undo?7000:3200);
+}
 function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('Could not load '+src.split('/').slice(-1)[0])); document.head.appendChild(s); }); }
 
 /* ================= state & storage ================= */
@@ -381,23 +460,28 @@ let mode = 'connecting';
 const LS = 'bloomline-payables-local';
 const COLS = {suppliers:'suppliers', docs:'docs', res:'resolutions'};
 
+let lastSaved=null, readOnly=false;
 function persistLocal(){ if(mode!=='local') return; try{ localStorage.setItem(LS, JSON.stringify(state)); }catch(e){} }
+function guard(e){ if(e && (e.code==='permission_denied'||e.code==='revoked'||e.code==='not_granted')){ readOnly=true; setStatus(); toast('You can view this ledger but not change it.'); } throw e; }
+const saved = ()=>{ lastSaved=new Date(); setStatus(); };
 async function put(col, id, data){
-  if(caps.db){ await caps.db.collection(COLS[col]).doc(id).set(data); }
-  else { state[col][id]=data; persistLocal(); render(); }
+  if(caps.db){ await caps.db.collection(COLS[col]).doc(id).set(data).catch(guard); saved(); }
+  else { state[col][id]=data; persistLocal(); saved(); render(); }
 }
 async function patch(col, id, data){
-  if(caps.db){ await caps.db.collection(COLS[col]).doc(id).update(data); }
-  else { state[col][id]=Object.assign({}, state[col][id], data); persistLocal(); render(); }
+  if(caps.db){ await caps.db.collection(COLS[col]).doc(id).update(data).catch(guard); saved(); }
+  else { state[col][id]=Object.assign({}, state[col][id], data); persistLocal(); saved(); render(); }
 }
 async function del(col, id){
-  if(caps.db){ await caps.db.collection(COLS[col]).doc(id).delete(); }
-  else { delete state[col][id]; persistLocal(); render(); }
+  if(caps.db){ await caps.db.collection(COLS[col]).doc(id).delete().catch(guard); saved(); }
+  else { delete state[col][id]; persistLocal(); saved(); render(); }
 }
 function setStatus(){
   const st=$('status'), dot=$('dot');
-  if(mode==='db'){ st.textContent='Live · saved for everyone with edit access'; dot.classList.remove('off'); }
-  else if(mode==='local'){ st.textContent='Offline preview · saved in this browser only'; dot.classList.add('off'); }
+  const when = lastSaved ? ' · last saved '+lastSaved.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+  if(readOnly){ st.textContent='View only · changes are not saved'; dot.classList.add('off'); }
+  else if(mode==='db'){ st.textContent='Live · saved for everyone with edit access'+when; dot.classList.remove('off'); }
+  else if(mode==='local'){ st.textContent='Offline preview · saved in this browser only'+when; dot.classList.add('off'); }
   else { st.textContent='Connecting…'; }
 }
 
@@ -446,7 +530,7 @@ function gather(sid){
     if(code==='S' && d.manual && closing==null && !lastStmt){ cutoff = cutoff && cutoff>d.docDate ? cutoff : d.docDate; }
     const seenHere = {};
     lines.forEach((l,ix)=>{
-      const line = {t:l.t, d:l.d||'', r:l.r||'', awb:l.awb||'', c:C(l.a), ap:Array.isArray(l.ap)?l.ap:[], m:l.m||'', n:l.n||'', doc:d.id, ix:(d.lines||[]).indexOf(l), docName:d.fileName||'', src:code};
+      const line = {t:l.t, d:l.d||'', r:l.r||'', awb:l.awb||'', c:C(l.a), ap:Array.isArray(l.ap)?l.ap:[], m:l.m||'', n:l.n||'', v:!!l.v, doc:d.id, ix:(d.lines||[]).indexOf(l), docName:d.fileName||'', src:code};
       let key = l.t==='pay' ? `pay|${line.d}|${line.c}|${nref(line.r)}` : (nref(line.r) ? `${l.t}|${nref(line.r)}` : `${l.t}|${line.d}|${line.c}`);
       if(seenHere[key]){ let n=2; while(seenHere[key+'#'+n]) n++; key=key+'#'+n; }
       seenHere[key]=1;
@@ -486,7 +570,7 @@ function supplierModel(sid){
   [...pP].sort((a,b)=>a.d<b.d?-1:1).forEach(p=>{ pays.push({p, k:best(pK,p), s:best(pS,p)}); });
   pK.filter(k=>!used.has(k)).forEach(k=>{ used.add(k); pays.push({p:null,k,s:best(pS,k)}); });
   pS.filter(s=>!used.has(s)).forEach(s=>{ used.add(s); pays.push({p:null,k:null,s}); });
-  pays.forEach(r=>{ const b=r.p||r.k||r.s; r.t='pay'; r.d=b.d; r.amt=b.c; r.ref=(r.p&&r.p.r)||(r.k&&r.k.r)||(r.s&&r.s.r)||''; r.ap=[...new Set([...(r.p?.ap||[]),...(r.k?.ap||[]),...(r.s?.ap||[])])]; r.alloc=[]; r.rowKey='P-'+r.d+'-'+r.amt+'-'+nref(r.ref); });
+  pays.forEach(r=>{ const b=r.p||r.k||r.s; r.t='pay'; r.d=b.d; r.amt=b.c; r.verified=[r.p,r.k,r.s].some(l=>l&&l.v); r.method=(r.p&&r.p.m)||(r.k&&r.k.m)||(r.s&&r.s.m)||''; r.ref=(r.p&&r.p.r)||(r.k&&r.k.r)||(r.s&&r.s.r)||''; r.ap=[...new Set([...(r.p?.ap||[]),...(r.k?.ap||[]),...(r.s?.ap||[])])]; r.alloc=[]; r.rowKey='P-'+r.d+'-'+r.amt+'-'+nref(r.ref); });
   /* ---- allocation: credits & payments to invoices, named invoices first, then oldest first ---- */
   const invs = rows.filter(r=>r.t==='inv').sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
   const byRef = new Map(invs.map(r=>[nref(r.ref),r]));
@@ -494,11 +578,17 @@ function supplierModel(sid){
   const flows = [...crs, ...pays.map(p=>({row:p, d:p.d, amt:p.amt, ap:p.ap, alloc:p.alloc}))].sort((a,b)=>a.d<b.d?-1:1);
   let unapplied=0;
   for(const f of flows){
-    let left=f.amt;
-    const take=inv=>{ if(left<=0||inv.open<=0) return; const x=Math.min(left,inv.open); inv.open-=x; left-=x; f.alloc.push(inv); inv.paidBy.push(f.row); };
+    let left=f.amt; const applied=[];
+    const take=inv=>{ if(left<=0||inv.open<=0) return; const x=Math.min(left,inv.open); inv.open-=x; left-=x; f.alloc.push(inv); inv.paidBy.push(f.row); applied.push({inv,x}); };
     f.ap.forEach(ref=>{ const inv=byRef.get(nref(ref)); if(inv) take(inv); });
     for(const inv of invs){ if(left<=0) break; take(inv); }
     unapplied+=left;
+    /* what this payment settles, Bloom-Line style: whole invoices, a split of one, or credit left over */
+    const full=applied.filter(a=>a.inv.open===0), part=applied.filter(a=>a.inv.open>0), parts=[];
+    if(full.length){ const a=full[0].inv.ref||'?', b=full[full.length-1].inv.ref||'?'; parts.push(`${full.length} invoice${full.length>1?'s':''} (${a===b?'#'+a:'#'+a+' – #'+b})`); }
+    part.forEach(p=>parts.push(`${money(p.x)} of #${p.inv.ref||'?'}`));
+    if(left>0) parts.push(`${money(left)} unapplied`);
+    f.row.cov={text:parts.join(' + ')||'nothing yet', result:(part.length||left>0)?'Splits':'Exact'};
   }
   /* ---- status ---- */
   const cut=g.cutoff;
@@ -556,14 +646,24 @@ function supplierModel(sid){
   const all=[...rows,...pays];
   const nOk=all.filter(r=>r.st==='ok'||r.st==='res').length, nEx=all.filter(r=>r.st==='bad'||r.st==='warn').length;
   const open=invs.filter(r=>r.open>0);
-  return {sid, g, rows, pays, stmt, stmtLines, komet, proven, rec, bridge, nOk, nEx, health: (nOk+nEx)?nOk/(nOk+nEx):null, open, unapplied, hasS:g.nDocs.S>0, hasK:g.nDocs.K>0, hasP:g.nDocs.P>0};
+  rows.forEach(r=>{ r.paid = r.t==='inv' ? r.amt-r.open : 0; r.status = r.t!=='inv' ? 'Credit' : r.open===0 ? 'Paid' : r.open<r.amt ? 'Partial' : 'Open'; r.sid=sid; });
+  pays.forEach(p=>{ p.sid=sid; });
+  const invoiced = sum(rows,r=>r.sign*r.amt), paid = sum(pays,r=>r.amt);
+  const lastPay = pays.slice().sort((a,b)=>a.d<b.d?1:-1)[0]||null;
+  const allLines=[...g.S,...g.K,...g.P];
+  const dups=allLines.filter(l=>l.key.includes('#')).map(l=>({ref:l.r, src:l.src, c:l.c}));
+  const awbBad=allLines.filter(l=>l.awb && !/^\d{3}[- ]?\d{8}$/.test(l.awb.trim())).map(l=>({ref:l.r, awb:l.awb, src:l.src}));
+  return {sid, g, rows, pays, stmt, stmtLines, komet, proven, rec, bridge, invoiced, paid, lastPay, dups, awbBad, nOk, nEx, health: (nOk+nEx)?nOk/(nOk+nEx):null, open, unapplied, hasS:g.nDocs.S>0, hasK:g.nDocs.K>0, hasP:g.nDocs.P>0};
 }
 function computeAll(){
   const ids = new Set(Object.keys(state.suppliers));
   Object.values(state.docs).forEach(d=>(d.lines||[]).forEach(l=>{ if(l.s) ids.add(l.s); }));
   const models = [...ids].map(supplierModel).filter(m=>m.rows.length||m.pays.length||state.suppliers[m.sid]);
-  const T = {rec:0, stmt:0, komet:0, nOk:0, nEx:0, exAmt:0, nStmtSup:0, nKSup:0};
-  models.forEach(m=>{ T.rec+=m.rec; T.komet+=m.komet; if(m.hasS){ T.stmt+=m.stmt; T.nStmtSup++; } if(m.hasK) T.nKSup++; T.nOk+=m.nOk; T.nEx+=m.nEx; [...m.rows,...m.pays].forEach(r=>{ if(r.st==='bad'||r.st==='warn') T.exAmt+=r.impact; }); });
+  const T = {rec:0, stmt:0, komet:0, nOk:0, nEx:0, exAmt:0, nStmtSup:0, nKSup:0, invoiced:0, paid:0, nInv:0, nPay:0, lastPay:null, oldest:null, nOpen:0};
+  models.forEach(m=>{ T.invoiced+=m.invoiced; T.paid+=m.paid; T.nInv+=m.rows.filter(r=>r.t==='inv').length; T.nPay+=m.pays.length; T.nOpen+=m.open.length;
+    if(m.lastPay && (!T.lastPay || m.lastPay.d>T.lastPay.d)) T.lastPay=m.lastPay;
+    m.open.forEach(i=>{ if(i.d && (!T.oldest || i.d<T.oldest.d)) T.oldest=i; });
+    T.rec+=m.rec; T.komet+=m.komet; if(m.hasS){ T.stmt+=m.stmt; T.nStmtSup++; } if(m.hasK) T.nKSup++; T.nOk+=m.nOk; T.nEx+=m.nEx; [...m.rows,...m.pays].forEach(r=>{ if(r.st==='bad'||r.st==='warn') T.exAmt+=r.impact; }); });
   models.sort((a,b)=>Math.abs(b.rec)-Math.abs(a.rec));
   return {models, T};
 }
@@ -574,6 +674,7 @@ let CM=null;
 function render(){
   CM = computeAll();
   renderHero(); renderBanners(); renderSuppliers(); renderQueue(); renderAging(); renderFlags(); renderSupSelects(); renderMatch(); renderFiles(); renderReviews();
+  renderLedger(); renderChart(); renderOpen(); renderInvoices(); renderPayments(); renderReconcile(); setStatus();
 }
 function num(el,target){
   cancelAnimationFrame(el._raf);
@@ -623,10 +724,13 @@ function allExceptions(){
   CM.models.forEach(m=>[...m.rows,...m.pays].forEach(r=>{ if(r.st==='bad'||r.st==='warn') out.push({m,r}); }));
   return out.sort((a,b)=>(a.r.st===b.r.st?0:a.r.st==='bad'?-1:1) || b.r.impact-a.r.impact);
 }
+let queueAll=false;
 function renderQueue(){
   const ex=allExceptions();
   if(!ex.length){ $('queue').innerHTML = CM.models.length ? `<div class="flag good">Every invoice and payment agrees across the sources you uploaded.</div>` : `<div class="empty">Exceptions show up here once two or more sources are in.</div>`; return; }
-  $('queue').innerHTML=`<table><thead><tr><th>Supplier</th><th>Item</th><th>Status</th><th class="num">Impact</th><th class="hide-sm">Next step</th></tr></thead><tbody>${ex.slice(0,40).map(({m,r},ix)=>`<tr data-go="${esc(m.sid)}" tabindex="0" style="--i:${Math.min(ix,26)}"><td>${esc(supName(m.sid))}</td><td>${r.t==='pay'?'Payment':TYPE_LABEL[r.t]} ${esc(r.ref?('#'+r.ref):'')}<div class="muted" style="font-size:11.5px">${dshow(r.d)}</div></td><td><span class="pill ${r.st}">${esc(r.lb)}</span></td><td class="num">${money(r.impact)}</td><td class="wrap hide-sm">${esc(r.act)}</td></tr>`).join('')}</tbody></table>${ex.length>40?`<p class="hint">Showing the top 40 of ${ex.length}. Open a supplier for the rest.</p>`:''}`;
+  const lim = queueAll ? 200 : 12;
+  $('queue').innerHTML=`<table><thead><tr><th>Supplier</th><th>Item</th><th>Status</th><th class="num">Impact</th><th class="hide-sm">Next step</th></tr></thead><tbody>${ex.slice(0,lim).map(({m,r},ix)=>`<tr data-go="${esc(m.sid)}" tabindex="0" style="--i:${Math.min(ix,26)}"><td>${esc(supName(m.sid))}</td><td>${r.t==='pay'?'Payment':TYPE_LABEL[r.t]} ${esc(r.ref?('#'+r.ref):'')}<div class="muted" style="font-size:11.5px">${dshow(r.d)}</div></td><td><span class="pill ${r.st}">${esc(r.lb)}</span></td><td class="num">${money(r.impact)}</td><td class="wrap hide-sm">${esc(r.act)}</td></tr>`).join('')}</tbody></table>${ex.length>12?`<div class="toolbar" style="margin-top:8px"><span class="hint" style="margin:0">Showing ${Math.min(lim,ex.length)} of ${ex.length}.</span><button class="small ghost" type="button" id="qMore">${queueAll?'Show top 12':'Show all'}</button></div>`:''}`;
+  const qb=$('qMore'); if(qb) qb.onclick=()=>{ queueAll=!queueAll; renderQueue(); };
 }
 function renderAging(){
   const t=dms(todayISO());
@@ -650,9 +754,13 @@ function renderFlags(){
     else if(m.g.cutoff && (t-dms(m.g.cutoff))/DAY>35) f.push(`<div class="flag">${n}: latest statement is from ${dshow(m.g.cutoff)}. Ask for a current one.</div>`);
     if(!m.hasK && m.hasS) f.push(`<div class="flag">${n}: not in any Komet upload yet.</div>`);
     if(m.unapplied>0) f.push(`<div class="flag bad">${n}: ${money(m.unapplied)} of payments and credits exceeds every known invoice. Check for a missing invoice or a double-recorded payment.</div>`);
+    m.dups.slice(0,3).forEach(x=>f.push(`<div class="flag">${n}: invoice #${esc(x.ref)} appears more than once in the same ${x.src==='S'?'statement':x.src==='K'?'Komet file':'proof'} (${money(x.c)}). Confirm it's a real split, not a double entry.</div>`));
+    if(m.awbBad.length) f.push(`<div class="flag">${n}: ${m.awbBad.length} AWB${m.awbBad.length>1?'s are':' is'} not in the usual 3 + 8 digit format (e.g. "${esc(m.awbBad[0].awb)}" on #${esc(m.awbBad[0].ref)}).</div>`);
+    const unv=m.pays.filter(p=>!p.verified).length; if(unv) f.push(`<div class="flag info">${n}: ${unv} of ${m.pays.length} payment${m.pays.length>1?'s are':' is'} not yet marked as bank-verified (see 06 Reconcile).</div>`);
+    const spl=m.pays.filter(p=>p.cov&&p.cov.result==='Splits').length; if(spl) f.push(`<div class="flag">${n}: ${spl} payment${spl>1?'s':''} split an invoice instead of clearing whole invoices (see 06 Reconcile).</div>`);
     if(m.g.closing!=null && m.g.closing!==m.stmtLines) f.push(`<div class="flag">${n}: the statement's balance (${money(m.g.closing)}) differs from the lines read from it (${money(m.stmtLines)}). The statement may have an opening balance or a page that didn't read. Check the bridge.</div>`);
   });
-  $('flags').innerHTML = f.length ? f.slice(0,12).join('') : `<div class="flag good">No data problems found.</div>`;
+  $('flags').innerHTML = f.length ? f.slice(0,20).join('') : `<div class="flag good">No data problems found.</div>`;
 }
 function renderSupSelects(){
   const ids=CM.models.map(m=>m.sid);
@@ -661,6 +769,8 @@ function renderSupSelects(){
   if(!curSup || !ids.includes(curSup)) curSup=ids[0]||'';
   const ss=$('supSel'); ss.innerHTML = opts || '<option value="">No suppliers yet</option>'; ss.value=curSup;
   const hs=$('hintSup'); const hv=hs.value; hs.innerHTML='<option value="">Detect from the document</option>'+opts; hs.value=ids.includes(hv)?hv:'';
+  ['chartSup','invSup','paySup'].forEach(id=>{ const s=$(id), v=s.value; s.innerHTML='<option value="">All suppliers</option>'+opts; s.value=ids.includes(v)?v:''; });
+  const rs=$('recSup'), rv=rs.value; rs.innerHTML=opts||'<option value="">No suppliers yet</option>'; rs.value=ids.includes(rv)?rv:(ids.includes(curSup)?curSup:(ids[0]||''));
 }
 function lineCell(l,cls){ if(!l) return '<td class="num muted">—</td>'; return `<td class="num ${cls}"><a href="#" data-edit="${esc(l.doc)}|${l.ix}" title="${esc(l.docName)}${l.r?' · #'+esc(l.r):''}">${money(l.c)}</a></td>`; }
 function stCell(r){
@@ -697,10 +807,150 @@ function renderFiles(){
   }).join('')}</tbody></table>` : `<div class="empty">Nothing uploaded yet.</div>`;
   const sups=Object.entries(state.suppliers).sort((a,b)=>a[1].name.localeCompare(b[1].name));
   $('supEdit').innerHTML = sups.length ? `<table><thead><tr><th>Name</th><th class="num">Lines</th><th></th></tr></thead><tbody>${sups.map(([id,s])=>{ const n=Object.values(state.docs).reduce((a,d)=>a+(d.lines||[]).filter(l=>l.s===id).length,0); return `<tr><td class="wrap">${esc(s.name)}${(s.aliases||[]).length?`<div class="muted" style="font-size:11.5px">also: ${esc(s.aliases.join(', '))}</div>`:''}</td><td class="num">${n}</td><td><button class="small" type="button" data-rename="${esc(id)}">Rename</button> <button class="small" type="button" data-merge="${esc(id)}">Merge</button></td></tr>`; }).join('')}</tbody></table>` : `<div class="empty">Suppliers appear here as documents come in.</div>`;
-  $('backup').innerHTML = `<p class="hint" style="margin-top:0">Download every supplier, document line and resolution note as one file, or the full match list as a spreadsheet.</p><div class="toolbar"><button class="small" type="button" id="expJson">Download backup (JSON)</button><button class="small" type="button" id="expAll">Export all matches (CSV)</button></div>${mode==='db'?'':'<p class="hint">Offline preview: data lives in this browser only.</p>'}`;
-  $('expJson').onclick=()=>save('bloomline_payables_backup.json', JSON.stringify(state,null,1));
-  $('expAll').onclick=()=>exportCSV(null);
 }
+
+/* ================= ledger views (ported from Surandina Bloom-Line) ================= */
+const daysAgo = d => isISO(d) ? Math.floor((dms(todayISO())-dms(d))/DAY) : null;
+const pickModels = sel => sel ? CM.models.filter(m=>m.sid===sel) : CM.models;
+function renderLedger(){
+  const {T}=CM;
+  num($('v-inv'), T.invoiced); $('s-inv').textContent=`${T.nInv} invoices · net of credits`;
+  num($('v-paid'), T.paid); const pct = T.invoiced>0 ? Math.max(0,Math.min(1,T.paid/T.invoiced)) : 0;
+  $('s-paid').textContent=`${T.nPay} payments · ${(pct*100).toFixed(1)}% settled`;
+  if(T.lastPay){ num($('v-last'), T.lastPay.amt); $('s-last').textContent=`${dshow(T.lastPay.d)} · ${daysAgo(T.lastPay.d)} days ago · ${supName(T.lastPay.sid)}`; }
+  else { $('v-last').textContent='—'; $('v-last')._shown=null; $('s-last').textContent='none recorded yet'; }
+  if(T.oldest){ $('v-old').textContent=daysAgo(T.oldest.d)+' days'; $('v-old').className='v'+(daysAgo(T.oldest.d)>60?' bad':''); $('s-old').textContent=`#${T.oldest.ref} · ${supName(T.oldest.sid)} · ${T.nOpen} open`; }
+  else { $('v-old').textContent='—'; $('s-old').textContent='nothing open'; }
+  $('amb-s').textContent = `${T.nOpen} OPEN INVOICES${T.oldest?' · OLDEST '+daysAgo(T.oldest.d)+' DAYS':''}${T.lastPay?' · LAST PAYMENT '+daysAgo(T.lastPay.d)+' DAYS AGO':''} · ${T.nEx} EXCEPTIONS`;
+}
+function niceStep(raw){ if(!(raw>0)) return 1; const mag=Math.pow(10,Math.floor(Math.log10(raw))); for(const m of [1,2,2.5,5,10]) if(m*mag>=raw) return m*mag; return 10*mag; }
+let chartModel=null, chartRange=12;
+function renderChart(){
+  const ev=[];
+  pickModels($('chartSup').value).forEach(m=>{
+    m.rows.forEach(r=>{ if(isISO(r.d)) ev.push([r.d, r.sign*r.amt, 'i', `${r.t==='cr'?'CREDIT':'INV'} #${r.ref||'—'} ${r.t==='cr'?'−':'+'}${money(r.amt)}`]); });
+    m.pays.forEach(p=>{ if(isISO(p.d)) ev.push([p.d, -p.amt, 'p', `PAYMENT −${money(p.amt)}`]); });
+  });
+  ev.sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:0);
+  if(!ev.length){ $('chart').innerHTML='<div class="empty">No dated invoices or payments yet.</div>'; chartModel=null; return; }
+  const today=dms(todayISO());
+  const start = chartRange ? today - chartRange*30.44*DAY : dms(ev[0][0]);
+  let bal=0, startBal=0; const pts=[], evs=[];
+  for(const [d,c,k,lab] of ev){ const x=dms(d); bal+=c; if(x<start) startBal=bal; else { pts.push([x,bal,k]); evs.push({x,bal,label:lab}); } }
+  const W=640,H=250,L=64,R=12,T=12,Bt=28;
+  const series=[[start,startBal]]; pts.forEach(p=>{ series.push([p[0],series[series.length-1][1]]); series.push([p[0],p[1]]); });
+  series.push([Math.max(today,series[series.length-1][0]),series[series.length-1][1]]);
+  const ys=series.map(s=>s[1]/100); let lo=Math.min(0,...ys), hi=Math.max(...ys,1);
+  const step=niceStep((hi-lo)/4); lo=Math.floor(lo/step)*step; hi=Math.ceil(hi/step)*step; if(hi===lo) hi=lo+step;
+  const X=x=>L+(x-start)/(Math.max(today-start,DAY))*(W-L-R), Y=y=>T+(hi-y)/(hi-lo)*(H-T-Bt);
+  chartModel={start,today,W,L,R,evs,startBal,X,Y};
+  let g='';
+  for(let v=lo; v<=hi+1e-9; v+=step){ const y=Y(v); g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="rgba(255,162,74,.13)"/><text x="${L-6}" y="${y+4}" text-anchor="end">${fmt.format(v).replace('.00','')}</text>`; }
+  const span=(today-start)/DAY, stepM = span>900?12 : span>300?3 : 1;
+  const sd=new Date(start); let cur=Date.UTC(sd.getUTCFullYear(),sd.getUTCMonth()+1,1), n=0;
+  while(cur<=today){ const dd=new Date(cur); if(n%stepM===0){ const x=X(cur); g+=`<line x1="${x}" x2="${x}" y1="${T}" y2="${H-Bt}" stroke="rgba(255,162,74,.1)" stroke-dasharray="2 3"/><text x="${x}" y="${H-10}" text-anchor="middle">${dd.toLocaleString('en-US',{month:'short',timeZone:'UTC'})} '${String(dd.getUTCFullYear()).slice(2)}</text>`; } n++; cur=Date.UTC(dd.getUTCFullYear(),dd.getUTCMonth()+1,1); }
+  const path=series.map((s,k)=>(k?'L':'M')+X(s[0]).toFixed(1)+' '+Y(s[1]/100).toFixed(1)).join(' ');
+  const dots=pts.filter(p=>p[2]==='p').map(p=>`<circle class="pay-dot" cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]/100).toFixed(1)}" r="3.6"/>`).join('');
+  $('chart').innerHTML=`<svg id="cs" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Balance owed over time. Hover or drag to read values.">${g}<path class="trace" pathLength="1" d="${path}" fill="none" stroke="#ffa24a" stroke-width="2.2"/>${dots}<g id="xh" style="display:none"><line id="xl" y1="${T}" y2="${H-Bt}" stroke="rgba(255,162,74,.6)" stroke-dasharray="3 3"/><circle id="xc" r="4.5" fill="#ffa24a"/></g></svg><div id="xr">Hover or drag across the trace to read the balance on any date.</div>`;
+}
+function scrub(e){
+  const m=chartModel, svg=$('cs'); if(!m||!svg) return;
+  const r=svg.getBoundingClientRect(); const vx=(e.clientX-r.left)/r.width*m.W;
+  const f=Math.max(0,Math.min(1,(vx-m.L)/(m.W-m.L-m.R))); const tt=m.start+f*Math.max(m.today-m.start,DAY);
+  let idx=-1; for(let k=0;k<m.evs.length;k++){ if(m.evs[k].x<=tt) idx=k; else break; }
+  const bal=idx>=0?m.evs[idx].bal:m.startBal; const x=m.X(tt), y=m.Y(bal/100);
+  $('xh').style.display=''; $('xl').setAttribute('x1',x); $('xl').setAttribute('x2',x); $('xc').setAttribute('cx',x); $('xc').setAttribute('cy',y);
+  $('xr').textContent=`${dshow(new Date(tt).toISOString().slice(0,10))} · balance ${money(bal)}${idx>=0?' · last: '+m.evs[idx].label:''}`;
+}
+$('chart').addEventListener('pointermove',scrub); $('chart').addEventListener('pointerdown',scrub);
+$('chart').addEventListener('pointerleave',()=>{ const h=$('xh'); if(h){ h.style.display='none'; $('xr').textContent='Hover or drag across the trace to read the balance on any date.'; } });
+
+function rowKeyOf(r){ const l=r.k||r.s||r.p; return l ? `${l.doc}|${l.ix}` : ''; }
+function invTable(rows, sortable, withSup){
+  const arrow = invSort==='asc'?' ▲':' ▼';
+  return `<table><thead><tr><th ${sortable?'data-sort="date" title="Click to reverse order"':''}>Date${sortable?arrow:''}</th>${withSup?'<th>Supplier</th>':''}<th>Invoice</th><th class="hide-sm">AWB</th><th class="hide-sm">Sources</th><th class="num">Amount</th><th class="num hide-sm">Paid</th><th class="num">Open</th><th>Status</th></tr></thead><tbody>`+
+    rows.map((i,ix)=>`<tr data-row="${esc(rowKeyOf(i))}" tabindex="0" style="--i:${Math.min(ix,26)}"><td>${dshow(i.d)}</td>${withSup?`<td class="wrap" style="min-width:120px">${esc(supName(i.sid))}</td>`:''}<td>${esc(i.ref)}${i.t==='cr'?' <span class="pill res">credit</span>':''}</td><td class="hide-sm">${esc(i.awb)}</td><td class="hide-sm"><span class="src S${i.s?'':' off'}">S</span><span class="src K${i.k?'':' off'}">K</span></td><td class="num">${money(i.sign*i.amt)}</td><td class="num hide-sm">${i.t==='inv'?money(i.paid):'—'}</td><td class="num">${i.t==='inv'?money(i.open):'—'}</td><td>${i.t==='inv'?`<span class="pill ${i.status}">${i.status}</span>`:'<span class="pill res">Credit</span>'}</td></tr>`).join('')+`</tbody></table>`;
+}
+function renderOpen(){
+  const open=[]; CM.models.forEach(m=>m.open.forEach(i=>open.push(i)));
+  open.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+  $('openTbl').innerHTML = open.length ? invTable(open.slice(0,15),false,true) + (open.length>15?`<div class="hint">Showing the oldest 15 of ${open.length}. See 04 Invoices for all.</div>`:'') : '<div class="empty">No open invoices.</div>';
+}
+let invFilter='all', invSort='desc';
+function renderInvoices(){
+  let rows=[]; pickModels($('invSup').value).forEach(m=>rows.push(...m.rows));
+  const yrs=[...new Set(rows.map(i=>(i.d||'').slice(0,4)).filter(Boolean))].sort().reverse();
+  const sel=$('yr'), keep=sel.value||'all';
+  sel.innerHTML='<option value="all">All years</option>'+yrs.map(y=>`<option value="${y}">${y}</option>`).join('');
+  sel.value = yrs.includes(keep)||keep==='all' ? keep : 'all';
+  rows.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0); if(invSort==='desc') rows.reverse();
+  if(invFilter==='open') rows=rows.filter(i=>i.t==='inv'&&i.open>0);
+  if(invFilter==='paid') rows=rows.filter(i=>i.t==='inv'&&i.open===0);
+  if(sel.value!=='all') rows=rows.filter(i=>(i.d||'').startsWith(sel.value));
+  const q=$('q').value.trim().toLowerCase(), qd=q.replace(/\D/g,'');
+  if(q) rows=rows.filter(i=>String(i.ref).toLowerCase().includes(q)||String(i.awb).toLowerCase().includes(q)||(qd.length>=4&&String(i.awb).replace(/\D/g,'').includes(qd)));
+  const tot=rows.reduce((a,i)=>a+(i.t==='inv'?i.open:0),0);
+  $('invTbl').innerHTML = rows.length ? invTable(rows,true,!$('invSup').value)+`<div class="hint">${rows.length} line${rows.length>1?'s':''} · ${money(tot)} open · tap a row to edit</div>` : '<div class="empty">No invoices match.</div>';
+}
+function renderPayments(){
+  let rows=[]; pickModels($('paySup').value).forEach(m=>rows.push(...m.pays));
+  rows.sort((a,b)=>a.d<b.d?1:-1);
+  const withSup=!$('paySup').value;
+  $('payTbl').innerHTML = rows.length ? `<table><thead><tr><th>Date</th>${withSup?'<th>Supplier</th>':''}<th class="num">Amount</th><th class="hide-sm">Method</th><th>Settles</th><th>Bank</th><th class="hide-sm">Sources</th><th class="hide-sm">Reference</th></tr></thead><tbody>`+
+    rows.map((p,ix)=>`<tr data-row="${esc(rowKeyOf(p))}" tabindex="0" style="--i:${Math.min(ix,26)}"><td>${dshow(p.d)}</td>${withSup?`<td class="wrap" style="min-width:120px">${esc(supName(p.sid))}</td>`:''}<td class="num">${money(p.amt)}</td><td class="hide-sm">${esc(p.method||'—')}</td><td class="wrap">${esc(p.cov?.text||'—')} ${p.cov?`<span class="pill ${p.cov.result}">${p.cov.result}</span>`:''}</td><td>${p.verified?'<span class="pill Verified">✓ Verified</span>':'<span class="pill Unverified">Not yet</span>'}</td><td class="hide-sm"><span class="src P${p.p?'':' off'}">P</span><span class="src K${p.k?'':' off'}">K</span><span class="src S${p.s?'':' off'}">S</span></td><td class="hide-sm">${esc(p.ref)}</td></tr>`).join('')+`</tbody></table>`
+    : `<div class="empty">No payments yet. Use <b>+ Record payment</b> or drop proofs of payment on the P bay.</div>`;
+}
+let pendingImport=null;
+function renderReconcile(){
+  const sid=$('recSup').value, m=CM.models.find(x=>x.sid===sid);
+  if(!m){ $('tie').innerHTML=$('verif').innerHTML=$('bounds').innerHTML='<div class="empty">Pick a supplier.</div>'; }
+  else {
+    const over=state.suppliers[sid]?.farmBalance;
+    const farmC = over!=null ? C(over) : (m.hasS ? m.stmt : null);
+    let h=`<div class="kv"><span>Balance per this tracker (reconciled)</span><span class="big">${money(m.rec)}</span><label for="farmBal">Balance per farm statement${m.g.cutoff&&over==null?' ('+dshow(m.g.cutoff)+')':''}</label><span><input id="farmBal" inputmode="decimal" value="${farmC==null?'':(farmC/100).toFixed(2)}" placeholder="enter balance" style="width:140px;text-align:right"></span>`;
+    if(farmC!=null){ const diff=m.rec-farmC; h+=`<span>Difference</span><span class="big" style="color:${diff===0?'var(--ok)':'var(--bad)'}">${diff===0?'✓ ':''}${smoney(diff)}</span>`; }
+    h+=`</div><div class="hint">${over!=null?'Using the balance you typed. Clear the box to go back to the uploaded statement.':'Filled from the latest uploaded statement. Type a newer figure from the farm to compare against it.'} Any difference is explained line by line on 03 Three-way match.</div>`;
+    $('tie').innerHTML=h;
+    const vp=m.pays.filter(p=>p.verified), up=m.pays.filter(p=>!p.verified);
+    $('verif').innerHTML=`<div class="kv"><span>Bank-verified</span><span class="big">${vp.length} · ${money(vp.reduce((a,p)=>a+p.amt,0))}</span><span>Not yet verified</span><span class="big">${up.length} · ${money(up.reduce((a,p)=>a+p.amt,0))}</span></div><div class="hint">Open a payment on 05 Payments and tick "Matches a bank record" once you've confirmed it on your bank statement.</div>`;
+    const sp=m.pays.filter(p=>p.cov&&p.cov.result==='Splits').sort((a,b)=>a.d<b.d?-1:1);
+    $('bounds').innerHTML = sp.length ? `<div class="scroll"><table><thead><tr><th>Date</th><th class="num">Amount</th><th>Settles</th><th>Next exact?</th></tr></thead><tbody>`+
+      sp.map(p=>{ const all=m.pays.slice().sort((a,b)=>a.d<b.d?-1:1), nx=all[all.indexOf(p)+1]; return `<tr data-row="${esc(rowKeyOf(p))}" tabindex="0"><td>${dshow(p.d)}</td><td class="num">${money(p.amt)}</td><td class="wrap">${esc(p.cov.text)}</td><td>${nx?(nx.cov&&nx.cov.result==='Exact'?'<span class="pill Exact">Yes</span>':'<span class="pill Splits">No</span>'):'—'}</td></tr>`; }).join('')+
+      `</tbody></table></div><div class="hint">Payments normally clear whole invoices. When one doesn't, the farm applied it differently (a partial payment, a credit, or an invoice amount that differs). Confirm these with the farm.</div>`
+      : (m.pays.length ? '<div class="flag good">Every payment lands exactly on an invoice boundary.</div>' : '<div class="empty">No payments for this supplier yet.</div>');
+  }
+  const imp = pendingImport ? `<div class="flag bad" style="margin-top:10px">Backup file: ${Object.keys(pendingImport.suppliers).length} suppliers, ${Object.keys(pendingImport.docs).length} files. This will <b>replace</b> everything in the tracker.<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="danger small" id="impApply" type="button">Replace current data</button><button class="small" id="impCancel" type="button">Cancel</button></div></div>` : '';
+  $('backup').innerHTML=`<div class="toolbar"><button id="expJson" type="button">Download backup (JSON)</button><button id="expAll" type="button">Export all matches (CSV)</button><button id="impBtn" type="button">Restore from backup…</button><input id="impFile" type="file" accept="application/json,.json" hidden></div><div class="hint">A backup holds every supplier, document line, payment, verification mark and resolution note. Restoring replaces current data, and you can Undo.</div>${imp}`;
+  $('expJson').onclick=()=>save('bloomline_payables_backup_'+todayISO()+'.json', JSON.stringify(state,null,1));
+  $('expAll').onclick=()=>exportCSV(null);
+  $('impBtn').onclick=()=>$('impFile').click();
+  if(pendingImport){ $('impCancel').onclick=()=>{ pendingImport=null; renderReconcile(); }; $('impApply').onclick=()=>applyImport(); }
+}
+async function replaceAll(next){
+  for(const col of ['suppliers','docs','res']){
+    for(const id of Object.keys(state[col])) if(!(next[col]||{})[id]) await del(col,id);
+    for(const [id,v] of Object.entries(next[col]||{})) await put(col,id,v);
+  }
+}
+async function applyImport(){
+  const snap=JSON.parse(JSON.stringify(state)), next=pendingImport; pendingImport=null;
+  try{ await replaceAll(next); toast('Backup restored', async()=>{ await replaceAll(snap); toast('Restore undone'); }); }
+  catch(e){ toast('The restore did not finish. Try again.'); }
+  render();
+}
+document.addEventListener('change', ev=>{
+  if(ev.target.id==='farmBal'){ const sid=$('recSup').value; if(!sid||!state.suppliers[sid]) return; const v=ev.target.value.trim(); patch('suppliers', sid, {farmBalance: v===''?null:+(C(v)/100).toFixed(2)}).then(()=>toast(v===''?'Using the uploaded statement again':'Farm balance saved')); }
+  if(ev.target.id==='impFile'){
+    const f=ev.target.files[0]; if(!f) return;
+    f.text().then(t=>{ const j=JSON.parse(t); if(!j||typeof j.docs!=='object'||typeof j.suppliers!=='object') throw 0; pendingImport={suppliers:j.suppliers||{}, docs:j.docs||{}, res:j.res||{}}; switchTab('reconcile'); renderReconcile(); }).catch(()=>toast('That file is not a Bloomline backup'));
+  }
+});
+['chartSup','invSup','paySup','recSup'].forEach(id=>$(id).addEventListener('change',()=>render()));
+$('range').onchange=e=>{ chartRange=Number(e.target.value); renderChart(); goEnter($('t-overview')); };
+$('q').oninput=renderInvoices; $('yr').onchange=renderInvoices;
+document.querySelectorAll('[data-f]').forEach(b=>b.addEventListener('click',()=>{ invFilter=b.dataset.f; invSort=invFilter==='open'?'asc':'desc'; document.querySelectorAll('[data-f]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderInvoices(); }));
+$('expInv').onclick=()=>{ const rows=[]; pickModels($('invSup').value).forEach(m=>rows.push(...m.rows)); save('bloomline_invoices.csv', csv([['Supplier','Date','Type','Invoice','AWB','On statement','In Komet','Amount','Paid','Open','Status','Match']].concat(rows.map(i=>[supName(i.sid),i.d,TYPE_LABEL[i.t],i.ref,i.awb,i.s?'yes':'no',i.k?'yes':'no',(i.sign*i.amt/100).toFixed(2),(i.paid/100).toFixed(2),(i.t==='inv'?i.open/100:0).toFixed(2),i.status,i.lb])))); };
+$('expPay').onclick=()=>{ const rows=[]; pickModels($('paySup').value).forEach(m=>rows.push(...m.pays)); save('bloomline_payments.csv', csv([['Supplier','Date','Amount','Method','Reference','Bank verified','Proof','Komet','Statement','Settles','Result','Match']].concat(rows.map(p=>[supName(p.sid),p.d,(p.amt/100).toFixed(2),p.method,p.ref,p.verified?'yes':'no',p.p?'yes':'no',p.k?'yes':'no',p.s?'yes':'no',p.cov?.text||'',p.cov?.result||'',p.lb])))); };
 
 /* ================= export ================= */
 function csv(rows){ return rows.map(r=>r.map(v=>{ const s=String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(',')).join('\n'); }
@@ -974,42 +1224,92 @@ function openDlg(html, onSubmit){
   frm.onsubmit=async ev=>{ ev.preventDefault(); const sub=ev.submitter; if(sub&&sub.value==='cancel'){ dlg.close(); return; } try{ const r=await onSubmit(sub&&sub.value); if(r!==false) dlg.close(); }catch(e){ toast('That did not save. Try again.'); } };
 }
 function supOptions(sel){ return Object.entries(state.suppliers).sort((a,b)=>a[1].name.localeCompare(b[1].name)).map(([id,s])=>`<option value="${esc(id)}" ${id===sel?'selected':''}>${esc(s.name)}</option>`).join(''); }
-function lineForm(l, srcKind, withSource){
-  return `${withSource?`<div class="f"><label for="ml-k">Source</label><select id="ml-k"><option value="statement">Supplier statement</option><option value="komet">KometSales</option><option value="payment">Proof of payment</option></select></div>`:''}
+const METHODS=['Wire transfer','ACH','Check','Zelle','Card','Other','Not specified'];
+function lineForm(l, withSource, kind){
+  const isPay=l.t==='pay';
+  return `${withSource?`<div class="f"><label for="ml-k">Source</label><select id="ml-k"><option value="payment" ${kind==='payment'?'selected':''}>Proof of payment (P)</option><option value="komet" ${kind==='komet'?'selected':''}>KometSales (K)</option><option value="statement" ${kind==='statement'?'selected':''}>Supplier statement (S)</option></select></div>`:''}
   <div class="f"><label for="ml-s">Supplier</label><select id="ml-s">${supOptions(l.s||curSup)}<option value="__new">+ New supplier…</option></select><input id="ml-sn" placeholder="New supplier name" hidden style="margin-top:6px"></div>
-  <div class="row2"><div class="f"><label for="ml-t">Type</label><select id="ml-t"><option value="inv" ${l.t==='inv'?'selected':''}>Invoice</option><option value="cr" ${l.t==='cr'?'selected':''}>Credit</option><option value="pay" ${l.t==='pay'?'selected':''}>Payment</option></select></div><div class="f"><label for="ml-d">Date</label><input id="ml-d" type="date" value="${esc(l.d||todayISO())}" required></div></div>
-  <div class="row2"><div class="f"><label for="ml-r">Invoice / reference #</label><input id="ml-r" value="${esc(l.r||'')}"></div><div class="f"><label for="ml-a">Amount</label><input id="ml-a" inputmode="decimal" value="${l.a!=null?esc((+l.a).toFixed(2)):''}" required placeholder="0.00"></div></div>
-  <div class="row2"><div class="f"><label for="ml-w">AWB</label><input id="ml-w" value="${esc(l.awb||'')}"></div><div class="f"><label for="ml-p">Applies to invoices</label><input id="ml-p" value="${esc((l.ap||[]).join(', '))}" placeholder="e.g. 10421, 10455"></div></div>
-  <div class="f"><label for="ml-n">Note</label><input id="ml-n" value="${esc(l.n||'')}"></div>`;
+  <div class="f"><label for="ml-a">Amount (USD)</label><div style="display:flex;gap:8px"><input id="ml-a" inputmode="decimal" value="${l.a!=null&&l.a!==''?esc((+l.a).toFixed(2)):''}" required placeholder="0.00"><button type="button" class="small" id="ml-full" style="white-space:nowrap" ${isPay?'':'hidden'}>Pay full balance</button></div></div>
+  <div class="preview" id="ml-prev" aria-live="polite" ${isPay?'':'hidden'}></div>
+  <div class="row2"><div class="f"><label for="ml-t">Type</label><select id="ml-t"><option value="inv" ${l.t==='inv'?'selected':''}>Invoice</option><option value="cr" ${l.t==='cr'?'selected':''}>Credit</option><option value="pay" ${isPay?'selected':''}>Payment</option></select></div><div class="f"><label for="ml-d">Date</label><input id="ml-d" type="date" value="${esc(l.d||todayISO())}" required></div></div>
+  <div class="row2"><div class="f"><label for="ml-r" id="ml-rl">${isPay?'Bank reference (TRN / confirmation)':'Invoice / credit #'}</label><input id="ml-r" value="${esc(l.r||'')}"></div><div class="f" id="ml-mw" ${isPay?'':'hidden'}><label for="ml-m">Method</label><select id="ml-m">${METHODS.map(m=>`<option ${((l.m||'Wire transfer')===m)?'selected':''}>${m}</option>`).join('')}</select></div><div class="f" id="ml-ww" ${isPay?'hidden':''}><label for="ml-w">AWB / booking</label><input id="ml-w" value="${esc(l.awb||'')}" placeholder="729-12345678"></div></div>
+  <div class="f"><label for="ml-p">${isPay?'Applies to invoices':'Applies to (credits)'}</label><input id="ml-p" value="${esc((l.ap||[]).join(', '))}" placeholder="e.g. 10421, 10455 — blank means oldest first"></div>
+  <div class="f" id="ml-vw" ${isPay?'':'hidden'}><label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px;text-transform:none;letter-spacing:0"><input type="checkbox" id="ml-v" ${l.v?'checked':''}> Matches a bank record</label></div>
+  <div class="f"><label for="ml-n">Note</label><input id="ml-n" value="${esc(l.n||'')}"></div><div id="ml-warn"></div>`;
 }
-function wireNewSup(){ const s=$('ml-s'), n=$('ml-sn'); const upd=()=>{ n.hidden = s.value!=='__new'; }; s.onchange=upd; upd(); }
+function wireLineForm(editAmt){
+  wireNewSup();
+  const t=$('ml-t'), upd=()=>{ const pay=t.value==='pay'; $('ml-full').hidden=!pay; $('ml-prev').hidden=!pay; $('ml-mw').hidden=!pay; $('ml-vw').hidden=!pay; $('ml-ww').hidden=pay; $('ml-rl').textContent=pay?'Bank reference (TRN / confirmation)':'Invoice / credit #'; preview(); };
+  const preview=()=>{
+    const p=$('ml-prev'); if(p.hidden) return; p.classList.remove('warnbox');
+    const m=CM.models.find(x=>x.sid===$('ml-s').value);
+    if(!m){ p.textContent='Pick a supplier to see what this payment settles.'; return; }
+    const before=m.rec+(editAmt||0), a=C($('ml-a').value||0);
+    if(!(a>0)){ p.textContent=`Balance before this payment: ${money(before)}. Enter an amount to see which invoices it clears.`; return; }
+    const open=m.open.map(i=>({ref:i.ref,open:i.open})); const refs=$('ml-p').value.split(/[,;]/).map(x=>nref(x)).filter(Boolean);
+    let left=a; const full=[], part=[];
+    const take=i=>{ if(left<=0||i.open<=0) return; const x=Math.min(left,i.open); i.open-=x; left-=x; (i.open===0?full:part).push([i.ref,x]); };
+    if(!editAmt){ refs.forEach(r=>{ const i=open.find(o=>nref(o.ref)===r); if(i) take(i); }); open.forEach(take); }
+    const parts=[]; if(full.length) parts.push(`${full.length} invoice${full.length>1?'s':''} (${full[0][0]===full[full.length-1][0]?'#'+full[0][0]:'#'+full[0][0]+' – #'+full[full.length-1][0]})`);
+    part.forEach(([r,x])=>parts.push(`${money(x)} of #${r}`));
+    const after=before-a;
+    p.innerHTML = (editAmt?'':`Settles: <b>${esc(parts.join(' + ')||'no open invoices')}</b><br>`) + `Balance after: <b>${after<0?money(-after)+' credit':money(after)}</b>`;
+    if(after<0||part.length) p.classList.add('warnbox');
+  };
+  t.onchange=upd; $('ml-a').oninput=preview; $('ml-s').addEventListener('change',preview); $('ml-p').oninput=preview;
+  $('ml-full').onclick=()=>{ const m=CM.models.find(x=>x.sid===$('ml-s').value); if(!m) return; $('ml-a').value=(Math.max(0,m.rec+(editAmt||0))/100).toFixed(2); preview(); $('ml-a').focus(); };
+  upd();
+}
+function wireNewSup(){ const s=$('ml-s'), n=$('ml-sn'); const upd=()=>{ n.hidden = s.value!=='__new'; }; s.addEventListener('change',upd); upd(); }
 async function readLineForm(){
   let s=$('ml-s').value;
-  if(s==='__new'){ const name=$('ml-sn').value.trim(); if(!name){ toast('Type the new supplier name.'); return null; } s=slug(name); await put('suppliers', s, {name, aliases:[], createdAt:new Date().toISOString()}); }
   const d=$('ml-d').value, a=C($('ml-a').value);
+  if(s==='__new' && !$('ml-sn').value.trim()){ toast('Type the new supplier name.'); return null; }
   if(!s){ toast('Pick a supplier.'); return null; }
   if(!isISO(d)||a<=0){ toast('A line needs a date and an amount above zero.'); return null; }
-  return {s, t:$('ml-t').value, d, r:$('ml-r').value.trim(), awb:$('ml-w').value.trim(), a:a/100, ap:$('ml-p').value.split(/[,;]/).map(x=>x.trim()).filter(Boolean), m:'', n:$('ml-n').value.trim()};
+  if(s==='__new'){ const name=$('ml-sn').value.trim(); s=slug(name); await put('suppliers', s, {name, aliases:[], createdAt:new Date().toISOString()}); }
+  const t=$('ml-t').value;
+  return {s, t, d, r:$('ml-r').value.trim(), awb:t==='pay'?'':$('ml-w').value.trim(), a:a/100, ap:$('ml-p').value.split(/[,;]/).map(x=>x.trim()).filter(Boolean), m:t==='pay'?$('ml-m').value:'', n:$('ml-n').value.trim(), ...(t==='pay'?{v:$('ml-v').checked}:{})};
 }
-function manualLine(){
-  openDlg(`<h2 id="dlgTitle">Add a line by hand</h2>${lineForm({t:'inv'},null,true)}<div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Add line</button></div>`, async v=>{
+function entryWarnings(kind, skipDoc, skipIx){
+  const w=[], t=$('ml-t').value, s=$('ml-s').value, r=nref($('ml-r').value), awb=t==='pay'?'':$('ml-w').value.trim(), d=$('ml-d').value;
+  if(t!=='pay' && r && s!=='__new'){ const hit=Object.entries(state.docs).some(([id,doc])=>doc.kind===kind && (doc.lines||[]).some((l,ix)=>!(id===skipDoc&&ix===skipIx) && l.s===s && l.t===t && nref(l.r)===r)); if(hit) w.push(`${TYPE_LABEL[t]} #${esc($('ml-r').value.trim())} already exists for this supplier in ${esc(KIND[kind].label)}.`); }
+  if(awb && !/^\d{3}[- ]?\d{8}$/.test(awb)) w.push('AWB is not in the usual 3 + 8 digit format (729-12345678).');
+  if(d>todayISO()) w.push('The date is in the future.');
+  return w;
+}
+function armDelete(btn, onDel){
+  btn.onclick=()=>{ if(btn.dataset.arm!=='1'){ btn.dataset.arm='1'; btn.textContent='Tap again to delete'; setTimeout(()=>{ if(btn.isConnected){ btn.dataset.arm='0'; btn.textContent='Delete'; } },4000); return; } onDel(); };
+}
+function openEntry(t){
+  const kind = t==='pay' ? 'payment' : 'komet';
+  let ack=false;
+  openDlg(`<h2 id="dlgTitle">${t==='pay'?'Record payment':'Add invoice'}</h2>${lineForm({t},true,kind)}<div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">${t==='pay'?'Record payment':'Add invoice'}</button></div>`, async v=>{
+    const k=$('ml-k').value, warns=entryWarnings(k);
+    if(warns.length && !ack){ ack=true; $('ml-warn').innerHTML=`<div class="flag" style="margin-top:8px">${warns.join('<br>')}<br>Press save again to keep it as entered.</div>`; return false; }
     const l=await readLineForm(); if(!l) return false;
-    const kind=$('ml-k').value;
-    await put('docs', newId('d'), {kind, manual:true, fileName:'Manual entry', assetId:null, docDate:l.d, closing:{}, uploadedAt:new Date().toISOString(), lines:[l], part:1});
-    curSup=l.s; toast('Line added.');
+    await put('docs', newId('d'), {kind:k, manual:true, fileName:'Manual entry', assetId:null, docDate:l.d, closing:{}, uploadedAt:new Date().toISOString(), lines:[l], part:1});
+    curSup=l.s; toast(l.t==='pay'?'Payment recorded':'Invoice added');
   });
-  wireNewSup();
+  wireLineForm(0);
 }
+function manualLine(){ openEntry('inv'); }
 function editLine(docId, ix){
   const d=state.docs[docId]; if(!d||!d.lines||!d.lines[ix]) return;
-  const l=d.lines[ix];
-  openDlg(`<h2 id="dlgTitle">Edit line · ${esc(KIND[d.kind]?.label||'')}</h2><p class="hint" style="margin-top:0">From ${esc(d.fileName||'manual entry')}${d.assetId?` · <a href="/_blob/${esc(d.assetId)}" target="_blank" rel="noopener">open original</a>`:''}</p>${lineForm(l,d.kind,false)}<div class="dlg-f"><button class="danger" value="delete" type="submit">Delete line</button><span style="flex:1"></span><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Save</button></div>`, async v=>{
-    const lines=[...d.lines];
-    if(v==='delete'){ lines.splice(ix,1); if(!lines.length){ await del('docs', docId); toast('Line deleted. The file had no other lines, so it was removed.'); return; } await patch('docs', docId, {lines}); toast('Line deleted.'); return; }
+  const l=d.lines[ix]; let ack=false;
+  openDlg(`<h2 id="dlgTitle">Edit ${TYPE_LABEL[l.t].toLowerCase()} · ${esc(KIND[d.kind]?.label||'')}</h2><p class="hint" style="margin-top:0">From ${esc(d.fileName||'manual entry')}${d.assetId?` · <a href="/_blob/${esc(d.assetId)}" target="_blank" rel="noopener">open original</a>`:''}</p>${lineForm(l,false,d.kind)}<div class="dlg-f"><button class="danger" value="delete" type="button" id="ml-del">Delete</button><span style="flex:1"></span><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Save</button></div>`, async v=>{
+    const warns=entryWarnings(d.kind, docId, ix);
+    if(warns.length && !ack){ ack=true; $('ml-warn').innerHTML=`<div class="flag" style="margin-top:8px">${warns.join('<br>')}<br>Press Save again to keep it as entered.</div>`; return false; }
     const nl=await readLineForm(); if(!nl) return false;
-    lines[ix]=nl; await patch('docs', docId, {lines}); toast('Line saved.');
+    const lines=[...d.lines]; lines[ix]=nl; await patch('docs', docId, {lines}); toast('Changes saved');
   });
-  wireNewSup();
+  wireLineForm(l.t==='pay'?C(l.a):0);
+  armDelete($('ml-del'), async()=>{
+    const snap=JSON.parse(JSON.stringify(d)); dlg.close();
+    const lines=[...d.lines]; lines.splice(ix,1);
+    if(!lines.length) await del('docs', docId); else await patch('docs', docId, {lines});
+    toast(`${TYPE_LABEL[l.t]} deleted`, async()=>{ await put('docs', docId, snap); toast('Restored'); });
+  });
 }
 function resolveDlg(resId, lb){
   openDlg(`<h2 id="dlgTitle">Resolve · ${esc(lb)}</h2><p class="hint" style="margin-top:0">Mark this as explained. It stops counting as an exception but stays visible under All and Matched.</p><div class="f"><label for="rs-n">What explains it</label><input id="rs-n" placeholder="e.g. Farm confirmed credit CM-90 on next statement" required></div><div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Resolve</button></div>`, async ()=>{
@@ -1046,8 +1346,8 @@ function mergeDlg(id){
 function deleteDocDlg(id){
   const d=state.docs[id];
   openDlg(`<h2 id="dlgTitle">Delete this file?</h2><p>${esc(d.fileName||'Manual entry')} and its ${(d.lines||[]).length} line${(d.lines||[]).length===1?'':'s'} will be removed from the ledger. This can't be undone.</p><div class="dlg-f"><button value="cancel" type="submit">Keep it</button><button class="danger" value="ok" type="submit">Delete</button></div>`, async ()=>{
-    if(d.assetId && caps.assets){ try{ await caps.assets.delete(d.assetId); }catch(e){} }
-    await del('docs', id); toast('File deleted.');
+    const snap=JSON.parse(JSON.stringify(d));
+    await del('docs', id); toast('File deleted.', async()=>{ await put('docs', id, snap); toast('File restored'); });
   });
 }
 function clearExamplesDlg(){
@@ -1068,7 +1368,7 @@ function switchTab(name){
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchTab(t.dataset.tab)));
 $('btnUp').onclick=()=>switchTab('intake');
-$('btnLine').onclick=manualLine;
+$('btnPay').onclick=()=>openEntry('pay'); $('btnInv').onclick=()=>openEntry('inv');
 $('supSel').onchange=e=>{ curSup=e.target.value; renderMatch(); };
 document.querySelectorAll('[data-mf]').forEach(b=>b.addEventListener('click',()=>{ mFilter=b.dataset.mf; document.querySelectorAll('[data-mf]').forEach(x=>x.setAttribute('aria-pressed', x===b)); renderMatch(); }));
 $('expMatch').onclick=()=>curSup&&exportCSV(curSup);
@@ -1080,9 +1380,11 @@ $('expMatch').onclick=()=>curSup&&exportCSV(curSup);
   bay.addEventListener('drop',e=>{ e.preventDefault(); bay.classList.remove('over'); intake([...e.dataTransfer.files], k); });
 });
 document.addEventListener('click',e=>{
-  const t=e.target.closest('button,a,tr[data-go]'); if(!t) return;
+  const th=e.target.closest('th[data-sort]'); if(th){ invSort=invSort==='asc'?'desc':'asc'; renderInvoices(); return; }
+  const t=e.target.closest('button,a,tr[data-go],tr[data-row]'); if(!t) return;
   const ds=t.dataset;
   if(t.matches('tr[data-go]')){ curSup=ds.go; switchTab('match'); render(); return; }
+  if(t.matches('tr[data-row]')){ const [d,ix]=(ds.row||'').split('|'); if(d) editLine(d,+ix); return; }
   if(ds.edit){ e.preventDefault(); const [d,ix]=ds.edit.split('|'); editLine(d,+ix); return; }
   if(ds.res){ resolveDlg(ds.res, ds.lb); return; }
   if(ds.unres){ del('res', ds.unres).then(()=>toast('Reopened.')); return; }
@@ -1098,7 +1400,12 @@ document.addEventListener('click',e=>{
     else if(ds.addl){ const vn=Object.keys(rv.vmap)[0]||''; rv.lines.push({inc:true, vendor:vn, t:rv.kind==='payment'?'pay':'inv', d:rv.docDate||todayISO(), r:'', awb:'', a:'', ap:[], m:'', n:''}); renderReviews(); }
   }
 });
-document.addEventListener('keydown',e=>{ if(e.key==='Enter' && e.target.matches('tr[data-go]')){ curSup=e.target.dataset.go; switchTab('match'); render(); } });
+document.addEventListener('keydown',e=>{
+  if((e.key==='Enter'||e.key===' ') && e.target.matches && e.target.matches('tr[data-go]')){ e.preventDefault(); curSup=e.target.dataset.go; switchTab('match'); render(); return; }
+  if((e.key==='Enter'||e.key===' ') && e.target.matches && e.target.matches('tr[data-row]')){ e.preventDefault(); const [d,ix]=(e.target.dataset.row||'').split('|'); if(d) editLine(d,+ix); return; }
+  const tab=e.target.closest&&e.target.closest('.tab');
+  if(tab&&['ArrowRight','ArrowLeft','Home','End'].includes(e.key)){ const tabs=[...document.querySelectorAll('.tab')]; let k=tabs.indexOf(tab); k = e.key==='Home'?0 : e.key==='End'?tabs.length-1 : (k+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length; e.preventDefault(); switchTab(tabs[k].dataset.tab); tabs[k].focus(); }
+});
 $('reviews').addEventListener('change',e=>{
   const el=e.target, ds=el.dataset;
   if(ds.l){ const [id,i,f]=ds.l.split('|'); const rv=reviews.find(r=>r.id===id); if(!rv) return; const l=rv.lines[+i];
@@ -1172,8 +1479,10 @@ function fxInit(){
     if(!$('boot').hidden) return;
     if(document.body.classList.contains('ambient')){ ev.preventDefault(); setAmbient(false); return; }
     if(dlg.open || ev.metaKey || ev.ctrlKey || ev.altKey || /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName||'')) return;
-    const map={'1':'overview','2':'intake','3':'match','4':'files'};
+    const map={'1':'overview','2':'intake','3':'match','4':'invoices','5':'payments','6':'reconcile','7':'files'};
     if(map[ev.key]){ switchTab(map[ev.key]); }
+    else if(ev.key==='p'||ev.key==='P'){ ev.preventDefault(); openEntry('pay'); }
+    else if(ev.key==='i'||ev.key==='I'){ ev.preventDefault(); openEntry('inv'); }
     else if(ev.key==='u'||ev.key==='U'){ switchTab('intake'); }
     else if(ev.key==='a'||ev.key==='A'){ setAmbient(true); }
   });
