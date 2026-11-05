@@ -1,0 +1,1658 @@
+<title>Bloomline Payables</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: Bloom-Line console. Hero balance strip, numbered channels (overview, intake, match, files). Dark single-theme by design. */
+:root{
+  --bg:#070905; --panel:rgba(14,19,10,.9); --panel-solid:#0d1208; --line:rgba(255,162,74,.22); --line2:rgba(255,162,74,.5); --rowline:rgba(255,162,74,.1);
+  --ink:#eaf0df; --muted:#9ba78e; --amber:#ffa24a; --amber-hi:#ffb467; --amber-ink:#1c0f00; --leaf:#7ddc6a;
+  --chip:rgba(255,255,255,.05); --field:rgba(0,0,0,.4);
+  --ok:#7ddc6a; --ok-bg:rgba(125,220,106,.13); --bad:#ff7456; --bad-bg:rgba(255,116,86,.13);
+  --warn:#ffd36a; --warn-bg:rgba(255,211,106,.12); --pend:#8fb8ff; --pend-bg:rgba(143,184,255,.12);
+  --c-s:#ffa24a; --c-k:#8fb8ff; --c-p:#7ddc6a; --c-b:#e0a8ff;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:Arial,Helvetica,sans-serif;
+  color-scheme:dark; box-sizing:border-box;
+}
+html{height:100%}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:15px/1.45 var(--sans);overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 85% 60% at 50% 108%,rgba(255,150,60,.19),rgba(255,150,60,.05) 50%,transparent 76%),radial-gradient(ellipse 55% 45% at 10% 8%,rgba(90,200,90,.09),transparent 70%)}
+#bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.vignette{position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse at 50% 30%,transparent 40%,rgba(0,0,0,.62) 100%)}
+.scan{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:.5;background:repeating-linear-gradient(0deg,rgba(255,255,255,.028) 0 1px,transparent 1px 3px)}
+.wrap{position:relative;z-index:3;max-width:1180px;margin:0 auto;padding-block:16px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));transition:opacity .4s}
+header.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:14px}
+.ch{font:11px var(--mono);letter-spacing:.2em;color:var(--amber);text-transform:uppercase}
+h1{font-size:22px;letter-spacing:.06em;margin:2px 0 3px;text-transform:uppercase;font-weight:700;text-shadow:0 0 22px rgba(255,162,74,.28);text-wrap:balance}
+h1 .sl{color:var(--amber)}
+.sub{font:12px var(--mono);color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--leaf);box-shadow:0 0 10px var(--leaf);display:inline-block}
+.dot.off{background:var(--bad);box-shadow:0 0 10px var(--bad)}
+body.fx .dot{animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+button{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border-radius:3px;border:1px solid var(--line2);background:rgba(255,162,74,.05);color:var(--amber);padding:9px 14px;min-height:38px;transition:background .2s,box-shadow .2s,transform .1s}
+button:hover{background:rgba(255,162,74,.16);box-shadow:0 0 16px rgba(255,162,74,.25)}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,tr:focus-visible,a:focus-visible,label.drop:focus-within{outline:2px solid var(--leaf);outline-offset:2px}
+button.primary{background:var(--amber);color:var(--amber-ink);border-color:var(--amber);box-shadow:0 0 18px rgba(255,162,74,.35)}
+button.primary:hover{background:var(--amber-hi)}
+button.small{padding:3px 9px;font-size:11.5px;min-height:28px}
+button.danger{color:var(--bad);border-color:var(--bad);background:var(--bad-bg)}
+button.ghost{border-color:var(--line);color:var(--muted);padding:6px 10px;min-height:32px;font-size:11.5px}
+a{color:var(--amber)}
+
+.card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:14px 16px;min-width:0}
+.card::before,.card::after{content:"";position:absolute;width:13px;height:13px;border:2px solid var(--amber);pointer-events:none;opacity:.85}
+.card::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+.card::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+h2{font:600 11px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--amber);margin:0 0 10px}
+h2::before{content:"◆ ";opacity:.7}
+.k{font:11px var(--mono);letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+.v{font:700 24px var(--mono);margin-top:3px;font-variant-numeric:tabular-nums}
+.s{font:12px var(--mono);color:var(--muted);margin-top:3px}
+.cards{display:grid;grid-template-columns:2.1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px}
+.card.bal{display:flex;justify-content:space-between;align-items:center;gap:10px;border-color:var(--line2)}
+.card.bal .v{font-size:clamp(32px,6vw,52px);line-height:1.05;color:var(--amber);text-shadow:0 0 26px rgba(255,162,74,.5)}
+.v.s-col{color:var(--c-s)} .v.k-col{color:var(--c-k)} .v.p-col{color:var(--c-p)} .v.bad{color:var(--bad)}
+.ringWrap{flex:none;width:118px;height:118px;position:relative}
+.ringWrap svg{width:100%;height:100%;display:block}
+.ring-track{stroke:rgba(255,255,255,.08)} .ring-prog{stroke:var(--leaf);stroke-linecap:round;filter:drop-shadow(0 0 5px rgba(125,220,106,.7));transition:stroke-dashoffset 1.3s cubic-bezier(.2,.8,.2,1)}
+.ring-ticks line{stroke:rgba(255,162,74,.45)}
+.sweep{transform-origin:60px 60px}
+body.fx .sweep{animation:spin 7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ringTxt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font:700 17px var(--mono);color:var(--ink)}
+.ringTxt small{font:9.5px var(--mono);letter-spacing:.14em;color:var(--muted)}
+
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:14px 0;overflow-x:auto}
+.tab{border:none;border-bottom:2px solid transparent;border-radius:0;background:none;padding:10px 14px;color:var(--muted);white-space:nowrap;box-shadow:none}
+.tab .n{color:var(--amber);opacity:.7;margin-right:6px}
+.tab .badge{margin-left:6px;font-size:10.5px;padding:0 6px;border-radius:2px;background:var(--bad-bg);color:var(--bad)}
+.tab:hover{background:rgba(255,162,74,.07);box-shadow:none}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--amber);text-shadow:0 0 12px rgba(255,162,74,.6)}
+.grid2{display:grid;grid-template-columns:2fr 1fr;gap:12px}
+.grid2>*,.grid3>*{min-width:0}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.stack{display:grid;gap:12px}
+
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font:13px var(--mono)}
+th,td{padding:8px 9px;border-bottom:1px solid var(--rowline);text-align:left;white-space:nowrap}
+th{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);position:sticky;top:0;background:var(--panel-solid);font-weight:600}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr[data-go]{cursor:pointer;transition:background .15s}
+tr[data-go]:hover td{background:rgba(255,162,74,.09)}
+td.wrap{white-space:normal;min-width:180px;font-family:var(--sans);font-size:13px}
+td.muted,.muted{color:var(--muted)}
+td{vertical-align:middle}
+#queue table{table-layout:auto} #queue td.wrap{min-width:0;width:40%}
+tfoot td{font-weight:700;border-top:1px solid var(--line2)}
+.pill{display:inline-block;padding:1px 8px;border-radius:2px;font:700 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;border:1px solid currentColor;white-space:nowrap}
+.pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.bad{background:var(--bad-bg);color:var(--bad)}
+.pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.pend{background:var(--pend-bg);color:var(--pend)}
+.pill.res{background:var(--chip);color:var(--muted)}
+.src{display:inline-block;width:18px;height:18px;line-height:16px;text-align:center;border-radius:2px;font:700 10.5px var(--mono);border:1px solid currentColor;margin-right:2px}
+.src.S{color:var(--c-s)} .src.K{color:var(--c-k)} .src.P{color:var(--c-p)} .src.B{color:var(--c-b)} .src.off{color:rgba(255,255,255,.18);border-style:dashed}
+.amtS{color:var(--c-s)} .amtK{color:var(--c-k)} .amtP{color:var(--c-p)} .amtB{color:var(--c-b)}
+.delta{color:var(--bad);font-weight:700}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+input,select,textarea{font:14px var(--mono);color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:3px;padding:8px 10px;width:100%;min-height:38px;color-scheme:dark}
+input:focus,select:focus,textarea:focus{border-color:var(--amber);box-shadow:0 0 14px rgba(255,162,74,.3);outline:none}
+input[type=checkbox]{width:auto;min-height:0;accent-color:var(--amber)}
+.toolbar input,.toolbar select{width:auto;max-width:100%}
+.chip{border-radius:99px;padding:4px 13px;background:var(--chip);border:1px solid var(--line);min-height:30px;font-size:11.5px}
+.chip[aria-pressed="true"]{background:var(--amber);color:var(--amber-ink);border-color:var(--amber)}
+.flag{padding:9px 11px;border-radius:2px;background:var(--warn-bg);font-size:13px;margin-bottom:7px;border-left:3px solid var(--warn)}
+.flag.good{background:var(--ok-bg);border-left-color:var(--ok)}
+.flag.bad{background:var(--bad-bg);border-left-color:var(--bad)}
+.flag.info{background:var(--pend-bg);border-left-color:var(--pend)}
+.flag button{margin-left:8px}
+.hint{font-size:12.5px;color:var(--muted);margin-top:6px}
+.status{font:12px var(--mono);color:var(--muted)}
+.empty{color:var(--muted);padding:14px 4px;font-size:13.5px}
+.health{display:inline-block;width:70px;height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;vertical-align:middle;margin-right:6px}
+.health i{display:block;height:100%;background:var(--leaf);box-shadow:0 0 6px var(--leaf)}
+.health.mid i{background:var(--warn)} .health.low i{background:var(--bad)}
+
+/* three-way strip */
+.tri{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin-bottom:12px}
+.tri>div{background:var(--panel-solid);padding:10px 12px}
+.tri .v{font-size:19px}
+.bridge{display:grid;gap:4px;font:13px var(--mono)}
+.bridge .br{display:grid;grid-template-columns:1fr auto;gap:10px;padding:5px 0;border-bottom:1px dashed var(--rowline)}
+.bridge .br.tot{border-bottom:0;border-top:1px solid var(--line2);font-weight:700;padding-top:8px}
+.bridge .br span:last-child{font-variant-numeric:tabular-nums;text-align:right}
+
+/* ledger (from Surandina Bloom-Line) */
+.pill.Paid,.pill.Exact,.pill.Verified{background:var(--ok-bg);color:var(--ok)}
+.pill.Open{background:var(--bad-bg);color:var(--bad)}
+.pill.Partial,.pill.Splits{background:var(--warn-bg);color:var(--warn)}
+.pill.Unverified{background:var(--chip);color:var(--muted)}
+tr[data-row]{cursor:pointer;transition:background .15s}
+tr[data-row]:hover td{background:rgba(255,162,74,.09)}
+th[data-sort]{cursor:pointer}
+#chart{position:relative}
+#chart svg{touch-action:pan-y;cursor:crosshair;display:block}
+.trace{filter:drop-shadow(0 0 4px rgba(255,162,74,.7))}
+.go .trace{stroke-dasharray:1;stroke-dashoffset:1;animation:draw 1.7s ease-out forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.pay-dot{fill:var(--leaf);filter:drop-shadow(0 0 5px var(--leaf))}
+body.fx .pay-dot{animation:pulse 2.4s ease-in-out infinite}
+svg text{fill:var(--muted);font-size:10.5px;font-family:var(--mono)}
+#xr{font:12px var(--mono);color:var(--amber);min-height:18px;margin-top:4px}
+#fresh{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:12px 16px}
+#fresh .fk{font:11px var(--mono);letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+#fresh .fv{font:700 20px var(--mono);margin-top:2px;font-variant-numeric:tabular-nums}
+#fresh .fs{font:12px var(--mono);color:var(--muted);margin-top:2px}
+#fresh .fv.ok{color:var(--ok)} #fresh .fv.warn{color:var(--warn)} #fresh .fv.bad{color:var(--bad)}
+#fresh .fwide{grid-column:1/-1;font-size:12.5px}
+@media(max-width:900px){#fresh{grid-template-columns:1fr 1fr}}
+.kv{display:grid;grid-template-columns:1fr auto;gap:8px 14px;font-size:14px;align-items:center}
+.kv .big{font:700 16px var(--mono);text-align:right}
+.preview{font-size:13px;background:var(--ok-bg);border:1px solid rgba(125,220,106,.25);border-radius:3px;padding:8px 10px;margin:4px 0 10px;min-height:40px}
+.preview.warnbox{background:var(--warn-bg);border-color:rgba(255,211,106,.4)}
+#toast{display:flex;align-items:center;gap:12px}
+#toast[hidden]{display:none!important}
+#toast button{min-height:26px;padding:2px 10px}
+
+/* intake */
+.bays{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px}
+@media(max-width:1100px){.bays{grid-template-columns:1fr 1fr}}
+label.drop{display:grid;gap:6px;align-content:start;cursor:pointer;min-height:170px;transition:background .2s,box-shadow .2s}
+label.drop:hover,label.drop.over{background:rgba(255,162,74,.08);box-shadow:0 0 22px rgba(255,162,74,.18)}
+label.drop .code{font:700 34px var(--mono);line-height:1}
+label.drop.S .code{color:var(--c-s)} label.drop.K .code{color:var(--c-k)} label.drop.P .code{color:var(--c-p)} label.drop.B .code{color:var(--c-b)}
+label.drop .ttl{font:700 13px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+label.drop .desc{font-size:13px;color:var(--muted)}
+label.drop .go{font:600 11.5px var(--mono);letter-spacing:.08em;color:var(--amber);text-transform:uppercase;margin-top:auto}
+label.drop input{position:absolute;width:1px;height:1px;opacity:0}
+.rv{margin-bottom:12px}
+.rv-h{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:10px}
+.rv-h .fn{font:700 14px var(--mono);overflow-wrap:anywhere}
+.rv .log{font:12px/1.6 var(--mono);color:var(--leaf);white-space:pre-wrap;background:rgba(0,0,0,.35);border:1px solid var(--rowline);padding:8px 10px;max-height:150px;overflow:auto}
+.rv table input,.rv table select{min-height:30px;padding:4px 6px;font-size:12.5px}
+.rv table td{padding:4px 5px}
+.rv tr.dup td{opacity:.55}
+.rv .meta{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:10px}
+.f{display:grid;gap:4px;min-width:0} .f label{font:11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.thinking{font:12px var(--mono);color:var(--amber)}
+body.fx .thinking::after{content:"▋";animation:blink 1s steps(2) infinite}
+
+/* aging petals */
+.petalBox{display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:center}
+.petalBox svg{width:170px;height:170px;flex:none}
+.legend{flex:1;min-width:150px}
+.lg{display:flex;align-items:center;gap:8px;font:12.5px var(--mono);margin:5px 0}
+.lg i{width:11px;height:11px;border-radius:2px;flex:none;box-shadow:0 0 8px currentColor}
+.lg .amt{margin-left:auto;font-variant-numeric:tabular-nums}
+.petal{transform-origin:100px 100px;fill-opacity:.62;stroke-width:1.5}
+.go .petal{animation:bloom .9s cubic-bezier(.2,.9,.3,1) both;animation-delay:calc(var(--i)*130ms)}
+@keyframes bloom{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+
+section[role=tabpanel].go{animation:enter .45s ease-out both}
+@keyframes enter{from{opacity:.2;transform:translateY(10px)}to{opacity:1;transform:none}}
+.go tbody tr{animation:rowin .4s ease-out both;animation-delay:calc(var(--i,0)*16ms)}
+@keyframes rowin{from{opacity:.2;transform:translateX(-10px)}to{opacity:1;transform:none}}
+
+details.how{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:9px 14px;margin-bottom:12px;font-size:13.5px}
+details.how summary{cursor:pointer;font:600 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--amber)}
+details.how p,details.how li{max-width:75ch}
+details.how ul{padding-left:18px;margin:6px 0}
+
+dialog{border:1px solid var(--line2);border-radius:3px;background:var(--panel-solid);color:var(--ink);padding:20px;width:min(500px,94vw);box-shadow:0 0 60px rgba(255,162,74,.22)}
+dialog[open]{animation:dlgin .25s ease-out}
+@keyframes dlgin{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+dialog::backdrop{background:rgba(3,5,2,.72);backdrop-filter:blur(5px)}
+dialog h2{font-size:13px}
+dialog .f{margin-bottom:11px}
+.dlg-f{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:6px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:#10170a;color:var(--ink);border:1px solid var(--line2);box-shadow:0 0 24px rgba(255,162,74,.3);padding:9px 14px;border-radius:3px;font:12.5px var(--mono);z-index:70;max-width:92vw}
+.kbd{font:11px var(--mono);color:var(--muted);text-align:center;margin-top:26px;letter-spacing:.08em}
+.kbd b{color:var(--amber);font-weight:600}
+
+#boot{position:fixed;inset:0;z-index:80;background:#050603;display:flex;align-items:center;justify-content:center;padding:24px;transition:opacity .5s}
+#boot.out{opacity:0;pointer-events:none}
+.bootbox{width:min(560px,100%);font:13px/1.7 var(--mono);color:var(--leaf)}
+.bt{font:700 clamp(15px,5.2vw,20px) var(--mono);white-space:nowrap;letter-spacing:.14em;color:var(--amber);text-shadow:0 0 22px rgba(255,162,74,.6);margin-bottom:14px}
+#bootLog{margin:0;white-space:pre-wrap;min-height:128px;font:inherit}
+#bootPrompt{margin-top:18px;color:var(--amber);letter-spacing:.12em}
+body.fx #bootPrompt{animation:blink 1.1s steps(2) infinite}
+@keyframes blink{50%{opacity:.15}}
+#amb{position:fixed;inset:0;z-index:40;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;cursor:pointer}
+body.ambient #amb{display:flex}
+body.ambient .wrap{opacity:0;pointer-events:none}
+#amb .big{font:700 clamp(46px,13vw,150px)/1 var(--mono);color:var(--amber);text-shadow:0 0 50px rgba(255,162,74,.6)}
+#amb .l1{font:12px var(--mono);letter-spacing:.3em;color:var(--muted);margin-bottom:12px;text-transform:uppercase}
+#amb .l2{font:13px var(--mono);letter-spacing:.14em;color:var(--ink);margin-top:16px}
+
+@media(max-width:900px){.cards{grid-template-columns:1fr 1fr}.cards .card.bal{grid-column:1/-1}.grid2{grid-template-columns:1fr}.bays,.grid3{grid-template-columns:1fr}.tri{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){
+  h1{font-size:17px}
+  .card{padding:10px 12px} .v{font-size:19px} .ringWrap{width:84px;height:84px} .ringTxt{font-size:13px} .ringTxt small{font-size:8px}
+  .cards{gap:8px}
+  .hide-sm{display:none} .kbd{display:none}
+  .tab .n{display:none} .tab{padding:10px 9px;font-size:12px;letter-spacing:.02em}
+  table{font-size:12.5px} th,td{padding:7px 5px} th{font-size:10px;letter-spacing:.06em}
+  label.drop{min-height:0}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+
+<canvas id="bg" aria-hidden="true"></canvas>
+<div class="vignette"></div><div class="scan"></div>
+
+<div id="boot" hidden role="dialog" aria-label="Start screen">
+  <div class="bootbox"><div class="bt">TROPICAL BLOOMS // BLOOM-LINE AP</div><pre id="bootLog"></pre><div id="bootPrompt">[ PRESS ANY KEY OR TAP TO INITIALIZE ]</div></div>
+</div>
+
+<div id="amb" aria-label="Ambient view. Press any key to exit."><div class="l1">Owed to suppliers · reconciled</div><div class="big" id="amb-v">$0.00</div><div class="l2" id="amb-s"></div></div>
+
+<div class="wrap">
+<header class="top">
+  <div>
+    <div class="ch">Channel 02 · Payables</div>
+    <h1>Supplier Debt <span class="sl">//</span> Bloom-Line</h1>
+    <div class="sub"><span>Tropical Blooms Inc</span><span><span class="dot" id="dot"></span> <span id="status" class="status">Connecting…</span></span><span id="clock">--:--:--</span></div>
+  </div>
+  <div class="actions">
+    <button class="primary" id="btnUp" type="button">+ Upload documents</button>
+    <button id="btnPay" type="button" title="Record payment (P)">+ Record payment</button>
+    <button id="btnInv" type="button" title="Add invoice (I)">+ Add invoice</button>
+    <button class="ghost" id="btnAmb" type="button" title="Ambient view (A)">⛶ Ambient</button>
+    <button class="ghost" id="btnFx" type="button" aria-pressed="true" title="Toggle animated background">FX: on</button>
+  </div>
+</header>
+
+<section class="card" id="fresh" aria-label="Data freshness" style="margin-bottom:12px"></section>
+<div id="banners"></div>
+
+<section class="cards" aria-label="Totals">
+  <div class="card bal">
+    <div><div class="k">Owed to suppliers · reconciled</div><div class="v" id="v-rec">$0.00</div><div class="s" id="s-rec"></div></div>
+    <div class="ringWrap" title="Share of invoices and payments that agree across all sources you uploaded">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <g class="ring-ticks" id="ticks"></g>
+        <circle class="ring-track" cx="60" cy="60" r="46" fill="none" stroke-width="7"/>
+        <circle class="ring-prog" id="ring" cx="60" cy="60" r="46" fill="none" stroke-width="7" transform="rotate(-90 60 60)" stroke-dasharray="289.03" stroke-dashoffset="289.03"/>
+        <g class="sweep"><line x1="60" y1="60" x2="60" y2="8" stroke="#ffa24a" stroke-width="1.2" opacity=".55"/></g>
+      </svg>
+      <div class="ringTxt"><span id="ring-pct">0%</span><small>MATCHED</small></div>
+    </div>
+  </div>
+  <div class="card"><div class="k"><span class="src S">S</span>Statements say</div><div class="v s-col" id="v-s">$0.00</div><div class="s" id="s-s"></div></div>
+  <div class="card"><div class="k"><span class="src K">K</span>Komet says</div><div class="v k-col" id="v-k">$0.00</div><div class="s" id="s-k"></div></div>
+  <div class="card"><div class="k">Open exceptions</div><div class="v" id="v-x">0</div><div class="s" id="s-x"></div></div>
+</section>
+<section class="cards" aria-label="Ledger totals" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+  <div class="card"><div class="k">Total invoiced</div><div class="v" id="v-inv">$0.00</div><div class="s" id="s-inv"></div></div>
+  <div class="card"><div class="k">Total paid</div><div class="v" id="v-paid">$0.00</div><div class="s" id="s-paid"></div></div>
+  <div class="card"><div class="k">Last payment</div><div class="v" id="v-last">—</div><div class="s" id="s-last"></div></div>
+  <div class="card"><div class="k">Oldest open invoice</div><div class="v" id="v-old">—</div><div class="s" id="s-old"></div></div>
+</section>
+
+<nav class="tabs" role="tablist" aria-label="Channels">
+  <button class="tab" role="tab" id="tab-overview" aria-controls="t-overview" data-tab="overview" aria-selected="true" type="button"><span class="n">01</span>Overview</button>
+  <button class="tab" role="tab" id="tab-intake" aria-controls="t-intake" data-tab="intake" aria-selected="false" tabindex="-1" type="button"><span class="n">02</span>Intake<span class="badge" id="intakeBadge" hidden></span></button>
+  <button class="tab" role="tab" id="tab-match" aria-controls="t-match" data-tab="match" aria-selected="false" tabindex="-1" type="button"><span class="n">03</span>Three-way match</button>
+  <button class="tab" role="tab" id="tab-invoices" aria-controls="t-invoices" data-tab="invoices" aria-selected="false" tabindex="-1" type="button"><span class="n">04</span>Invoices</button>
+  <button class="tab" role="tab" id="tab-payments" aria-controls="t-payments" data-tab="payments" aria-selected="false" tabindex="-1" type="button"><span class="n">05</span>Payments</button>
+  <button class="tab" role="tab" id="tab-reconcile" aria-controls="t-reconcile" data-tab="reconcile" aria-selected="false" tabindex="-1" type="button"><span class="n">06</span>Reconcile</button>
+  <button class="tab" role="tab" id="tab-files" aria-controls="t-files" data-tab="files" aria-selected="false" tabindex="-1" type="button"><span class="n">07</span>Files &amp; suppliers</button>
+</nav>
+
+<section id="t-overview" role="tabpanel" aria-labelledby="tab-overview">
+  <details class="how"><summary>How the three-way match works</summary>
+    <ul>
+      <li><span class="src S">S</span><b>Supplier statement</b>: what the farm says you owe. <span class="src K">K</span><b>KometSales</b>: what your books say. <span class="src P">P</span><b>Proof of payment</b>: what you can prove you paid.</li>
+      <li>Invoices are matched by invoice number between the statement and Komet; if the numbers differ, a same-amount invoice within 5 days counts as a match with a "Ref differs" warning.</li>
+      <li>Payments are matched across all three by amount, within 10 days or by reference.</li>
+      <li><b>Reconciled</b> is the best-evidence balance: every invoice either side knows about (Komet's amount wins when they differ), minus credits, minus every payment found in any source. The bridge on the match channel shows exactly how each statement balance gets there.</li>
+      <li>Upload Komet data and statements that cover the same period. Anything dated after a supplier's latest statement shows as pending, not as an error.</li>
+    </ul>
+  </details>
+  <div class="card" style="margin-bottom:12px"><h2>Suppliers · three-way balance</h2><div class="scroll" id="supTbl"></div></div>
+  <div class="stack" style="margin-bottom:12px">
+    <div class="card">
+      <div class="toolbar" style="justify-content:space-between;margin-bottom:4px">
+        <h2 style="margin:0">Balance trace</h2>
+        <span class="toolbar" style="margin:0"><select id="chartSup" aria-label="Chart supplier"></select><select id="range" aria-label="Chart range"><option value="3">Last 3 months</option><option value="6">Last 6 months</option><option value="12" selected>Last 12 months</option><option value="0">All time</option></select></span>
+      </div>
+      <div id="chart"></div>
+    </div>
+    <div class="card"><h2>Open invoices · oldest first</h2><div class="scroll" id="openTbl"></div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h2>Action queue · biggest dollar impact first</h2><div class="scroll" id="queue"></div></div>
+    <div class="stack">
+      <div class="card"><h2>Payment plan · by due date</h2><div id="plan"></div></div>
+      <div class="card"><h2>Aging petals · reconciled open</h2><div id="aging"></div></div>
+      <div class="card"><h2>Data checks</h2><div id="flags"></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="t-intake" role="tabpanel" aria-labelledby="tab-intake" hidden>
+  <div class="bays">
+    <label class="card drop S" data-kind="statement" id="bay-statement">
+      <span class="code">S</span><span class="ttl">Supplier statement</span>
+      <span class="desc">The account statement the farm sends you. PDF, photo, Excel or CSV.</span>
+      <span class="go">Drop files or tap to choose</span>
+      <input type="file" id="in-statement" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.csv,.xlsx,.xls,.txt,application/pdf,image/*">
+    </label>
+    <label class="card drop K" data-kind="komet" id="bay-komet">
+      <span class="code">K</span><span class="ttl">KometSales export</span>
+      <span class="desc">Vendor bills, AP aging or payments exported from Komet. One vendor or all vendors.</span>
+      <span class="go">Drop files or tap to choose</span>
+      <input type="file" id="in-komet" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xlsx,.xls,.txt,application/pdf,image/*">
+    </label>
+    <label class="card drop P" data-kind="payment" id="bay-payment">
+      <span class="code">P</span><span class="ttl">Proof of payment</span>
+      <span class="desc">Wire or ACH confirmations, check copies, Zelle or bank screenshots.</span>
+      <span class="go">Drop files or tap to choose</span>
+      <input type="file" id="in-payment" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xlsx,.xls,.txt,application/pdf,image/*">
+    </label>
+    <label class="card drop B" data-kind="bank" id="bay-bank">
+      <span class="code">B</span><span class="ttl">Bank statement</span>
+      <span class="desc">Monthly bank statement or activity export. Only payments to suppliers are kept.</span>
+      <span class="go">Drop files or tap to choose</span>
+      <input type="file" id="in-bank" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xlsx,.xls,.txt,.qfx,.ofx,application/pdf,image/*">
+    </label>
+  </div>
+  <div class="toolbar">
+    <label class="status" for="hintSup">Supplier for these files</label>
+    <select id="hintSup" aria-label="Supplier for these files"></select>
+    <span class="hint" id="aiNote" style="margin:0"></span>
+  </div>
+  <div class="card" id="inboxCard" hidden style="margin-bottom:12px"><h2>From compras@ · waiting for a PDF or review</h2><div class="scroll" id="inboxList"></div></div>
+  <div id="reviews"></div>
+</section>
+
+<section id="t-match" role="tabpanel" aria-labelledby="tab-match" hidden>
+  <div class="toolbar">
+    <select id="supSel" aria-label="Supplier"></select>
+    <button class="chip" data-mf="all" aria-pressed="false" type="button">All</button>
+    <button class="chip" data-mf="ex" aria-pressed="true" type="button">Exceptions</button>
+    <button class="chip" data-mf="ok" aria-pressed="false" type="button">Matched</button>
+    <span style="flex:1"></span>
+    <button class="small" id="expMatch" type="button">Export CSV</button>
+  </div>
+  <div id="matchBody"></div>
+</section>
+
+<section id="t-invoices" role="tabpanel" aria-labelledby="tab-invoices" hidden>
+  <div class="card">
+    <div class="toolbar">
+      <select id="invSup" aria-label="Supplier"></select>
+      <button class="chip" data-f="all" aria-pressed="true" type="button">All</button>
+      <button class="chip" data-f="open" aria-pressed="false" type="button">Open / partial</button>
+      <button class="chip" data-f="paid" aria-pressed="false" type="button">Paid</button>
+      <input id="q" type="search" placeholder="Search invoice # or AWB" aria-label="Search invoices">
+      <select id="yr" aria-label="Year"></select>
+      <span style="flex:1"></span>
+      <button class="small" id="expInv" type="button">Export CSV</button>
+    </div>
+    <div class="scroll" style="max-height:620px;overflow-y:auto" id="invTbl"></div>
+  </div>
+</section>
+
+<section id="t-payments" role="tabpanel" aria-labelledby="tab-payments" hidden>
+  <div class="card">
+    <div class="toolbar"><select id="paySup" aria-label="Supplier"></select><h2 style="margin:0">Payments made</h2><span style="flex:1"></span><button class="small" id="expPay" type="button">Export CSV</button></div>
+    <div class="scroll" id="payTbl"></div>
+  </div>
+</section>
+
+<section id="t-reconcile" role="tabpanel" aria-labelledby="tab-reconcile" hidden>
+  <div class="toolbar"><select id="recSup" aria-label="Supplier"></select></div>
+  <div class="grid2">
+    <div class="card"><h2>1 · Tie-out to the farm's statement</h2><div id="tie"></div></div>
+    <div class="card"><h2>2 · Bank verification</h2><div id="verif"></div></div>
+  </div>
+  <div class="card" style="margin-top:12px"><h2>3 · Payments that don't land on an invoice boundary</h2><div id="bounds"></div></div>
+  <div class="card" style="margin-top:12px"><h2>4 · Month-end checklist · every supplier</h2><div class="scroll" id="checklist"></div></div>
+  <div class="card" style="margin-top:12px"><h2>5 · Backup</h2><div id="backup"></div></div>
+</section>
+
+<section id="t-files" role="tabpanel" aria-labelledby="tab-files" hidden>
+  <div class="card" style="margin-bottom:12px"><h2>Uploaded documents</h2><div class="scroll" id="docTbl"></div></div>
+  <div class="card" style="margin-bottom:12px"><h2>Suppliers</h2><div class="toolbar"><button class="small" type="button" id="btnAddSup">+ Add supplier</button><span class="hint" style="margin:0">Add every farm you buy from, even before its first statement, so a missing statement is noticed.</span></div><div class="scroll" id="supEdit"></div><p class="hint">Merge two names when the same farm came in spelled differently (for example a Komet vendor name and the name on the farm's letterhead).</p></div>
+  <div class="card"><h2>Activity log</h2><div class="scroll" id="actLog" style="max-height:420px;overflow-y:auto"></div></div>
+</section>
+<div class="kbd"><b>1–7</b> channels · <b>P</b> record payment · <b>I</b> add invoice · <b>U</b> upload · <b>A</b> ambient · <b>Esc</b> close</div>
+</div>
+
+<dialog id="dlg" aria-labelledby="dlgTitle"><form method="dialog" id="frm" autocomplete="off"></form></dialog>
+<div id="toast" role="status" hidden></div>
+
+<script>
+"use strict";
+/* ================= constants & helpers ================= */
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const PDFW  = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const XLSXJS = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+const KIND = {
+  statement:{code:'S', label:'Supplier statement'},
+  komet:{code:'K', label:'KometSales export'},
+  payment:{code:'P', label:'Proof of payment'},
+  bank:{code:'B', label:'Bank statement'}
+};
+const RES_REASONS=['Timing difference (will clear next statement)','Supplier error · credit requested','Our error · fixed in Komet','Duplicate entry','Paid by offset / credit / duties refund','Accepted difference (written off)','Other'];
+const TYPE_LABEL = {inv:'Invoice', cr:'Credit', pay:'Payment'};
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const fmt = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
+const C = x => Math.round((parseFloat(String(x).replace(/[$,\s]/g,''))||0)*100);
+const money = c => fmt.format((c||0)/100);
+const smoney = c => (c>0?'+':'')+money(c);
+const DAY = 864e5;
+const isISO = s => /^\d{4}-\d{2}-\d{2}$/.test(s||'');
+const dms = s => Date.UTC(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10));
+const dshow = s => isISO(s) ? `${s.slice(5,7)}/${s.slice(8,10)}/${s.slice(0,4)}` : '—';
+const todayISO = () => { const t=new Date(); return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; };
+const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const nref = r => { let s=String(r||'').toUpperCase().replace(/[^A-Z0-9]/g,''); s=s.replace(/^(INVOICE|FACTURA|INV|FACT|FAC|FV|NO)(?=\d)/,''); s=s.replace(/^0+(?=\d)/,''); return s; };
+const nname = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\b(inc|corp|corporation|co|cia|sas|s a|sa|ltda|llc|ltd|farms?|flowers?|flores|the|de|del|group)\b/g,' ').replace(/\s+/g,' ').trim();
+const slug = s => (nname(s).replace(/ /g,'-').slice(0,40) || 'supplier') + '-' + Math.random().toString(36).slice(2,6);
+function toISO(v){
+  if(v==null||v==='') return '';
+  const s=String(v).trim();
+  if(isISO(s)) return s;
+  let m=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/); if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  m=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);
+  if(m){ let a=+m[1], b=+m[2], y=+m[3]; if(y<100) y+=2000; let mo=a, d=b; if(a>12&&b<=12){ mo=b; d=a; } if(mo>12||d>31) return ''; return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+  const t=Date.parse(s); if(!isNaN(t)){ const d=new Date(t); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+  return '';
+}
+function toast(msg, undo){
+  const t=$('toast'); t.innerHTML=`<span>${esc(msg)}</span>`;
+  if(undo){ const b=document.createElement('button'); b.type='button'; b.textContent='Undo'; b.onclick=()=>{ t.hidden=true; undo(); }; t.appendChild(b); }
+  t.hidden=false; clearTimeout(toast._h); toast._h=setTimeout(()=>{t.hidden=true;}, undo?7000:3200);
+}
+function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('Could not load '+src.split('/').slice(-1)[0])); document.head.appendChild(s); }); }
+
+/* ================= state & storage ================= */
+const state = { suppliers:{}, docs:{}, res:{}, log:{}, inbox:{}, meta:{} };
+const caps = { db:null, assets:null, sample:null, downloads:null, limits:null };
+let mode = 'connecting';
+const LS = 'bloomline-payables-local';
+const COLS = {suppliers:'suppliers', docs:'docs', res:'resolutions', log:'activity', inbox:'inbox', meta:'meta'};
+
+let lastSaved=null, readOnly=false;
+function persistLocal(){ if(mode!=='local') return; try{ localStorage.setItem(LS, JSON.stringify(state)); }catch(e){} }
+function guard(e){ if(e && (e.code==='permission_denied'||e.code==='revoked'||e.code==='not_granted')){ readOnly=true; setStatus(); toast('You can view this ledger but not change it.'); } throw e; }
+const saved = ()=>{ lastSaved=new Date(); setStatus(); };
+async function put(col, id, data){
+  if(caps.db){ await caps.db.collection(COLS[col]).doc(id).set(data).catch(guard); saved(); }
+  else { state[col][id]=data; persistLocal(); saved(); render(); }
+}
+async function patch(col, id, data){
+  if(caps.db){ await caps.db.collection(COLS[col]).doc(id).update(data).catch(guard); saved(); }
+  else { state[col][id]=Object.assign({}, state[col][id], data); persistLocal(); saved(); render(); }
+}
+async function del(col, id){
+  if(caps.db){ await caps.db.collection(COLS[col]).doc(id).delete().catch(guard); saved(); }
+  else { delete state[col][id]; persistLocal(); saved(); render(); }
+}
+function logAct(text){ const id=newId('a'); const rec={ts:new Date().toISOString(), text:String(text).slice(0,300)}; put('log', id, rec).catch(()=>{}); }
+function setStatus(){
+  const st=$('status'), dot=$('dot');
+  const when = lastSaved ? ' · last saved '+lastSaved.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+  if(readOnly){ st.textContent='View only · changes are not saved'; dot.classList.add('off'); }
+  else if(mode==='db'){ st.textContent='Live · saved for everyone with edit access'+when; dot.classList.remove('off'); }
+  else if(mode==='local'){ st.textContent='Offline preview · saved in this browser only'+when; dot.classList.add('off'); }
+  else { st.textContent='Connecting…'; }
+}
+
+async function useCap(name){ try{ return (window.claude && claude.use) ? await claude.use(name) : null; }catch(e){ return null; } }
+async function init(){
+  render();
+  const [db, assets, sample, downloads] = await Promise.all([useCap('db'), useCap('assets'), useCap('sample'), useCap('downloads')]);
+  Object.assign(caps, {db, assets, sample, downloads});
+  if(sample){ try{ caps.limits = await sample.limits(); }catch(e){ caps.limits=null; } }
+  if(db){
+    mode='db';
+    const sub = (col) => db.collection(COLS[col]).onSnapshot(snap=>{
+      const o={}; snap.docs.forEach(d=>{ o[d.id]=d.data(); }); state[col]=o; scheduleRender();
+    }, e=>{ toast('Lost the live connection. Reload the page to reconnect.'); });
+    sub('suppliers'); sub('docs'); sub('res'); sub('log'); sub('inbox'); sub('meta');
+  } else {
+    mode='local';
+    try{ const raw=localStorage.getItem(LS); if(raw){ const s=JSON.parse(raw); ['suppliers','docs','res','log','inbox','meta'].forEach(k=>{ if(s&&s[k]&&typeof s[k]==='object') state[k]=s[k]; }); } }catch(e){}
+  }
+  setStatus(); render();
+}
+let rq=0; function scheduleRender(){ if(rq) return; rq=requestAnimationFrame(()=>{ rq=0; render(); }); }
+
+/* ================= reconciliation engine ================= */
+function supName(id){ return state.suppliers[id]?.name || 'Unknown supplier'; }
+function docOrder(d){ return (d.docDate||'') + '|' + (d.uploadedAt||''); }
+
+function gather(sid){
+  const docs = Object.entries(state.docs).map(([id,d])=>Object.assign({id},d)).sort((a,b)=>docOrder(a)<docOrder(b)?-1:1);
+  const src = {S:new Map(), K:new Map(), P:new Map(), B:new Map()};
+  let cutoff=null, closing=null, lastStmt=null, nDocs={S:0,K:0,P:0,B:0}, kClosing=null, kClosingDate='', kAsOf='', kUploaded='';
+  const start = state.suppliers[sid]?.startDate || '';
+  /* A statement is a snapshot: only the latest uploaded statement for this supplier counts (plus manual statement lines). */
+  for(const d of docs){
+    if(d.kind!=='statement' || d.manual || d.emailInvoice) continue;
+    const lines=(d.lines||[]).filter(l=>l.s===sid); if(!lines.length) continue;
+    const dd = d.docDate || lines.reduce((m,l)=>l.d>m?l.d:m,'');
+    if(!cutoff || dd>=cutoff){ cutoff=dd; lastStmt=d; closing = (d.closing && d.closing[sid]!=null) ? C(d.closing[sid]) : null; }
+  }
+  const stmtBatch = lastStmt ? (lastStmt.batch||lastStmt.id) : null;
+  for(const d of docs){
+    const code = KIND[d.kind]?.code; if(!code) continue;
+    const lines = (d.lines||[]).filter(l=>l.s===sid);
+    if(!lines.length) continue;
+    nDocs[code]++;
+    if(code==='K' && d.closing && d.closing[sid]!=null && (d.docDate||'')>=kClosingDate){ kClosing=C(d.closing[sid]); kClosingDate=d.docDate||''; }
+    if(code==='K'){ const asOf=d.docDate||(d.uploadedAt||'').slice(0,10); if(asOf>kAsOf) kAsOf=asOf; if((d.uploadedAt||'')>kUploaded) kUploaded=d.uploadedAt||''; }
+    if(code==='S' && !d.manual && !d.emailInvoice && (d.batch||d.id)!==stmtBatch) continue;
+    if(code==='S' && d.manual && closing==null && !lastStmt){ cutoff = cutoff && cutoff>d.docDate ? cutoff : d.docDate; }
+    const seenHere = {};
+    lines.forEach((l,ix)=>{
+      if(start && l.d && l.d<start && code!=='S') return;
+      if(code==='B' && l.t!=='pay') return;
+      if(d.emailInvoice && cutoff && l.d && l.d<=cutoff) return; // invoice emails only fill the gap after the latest statement
+      const line = {t:l.t, d:l.d||'', r:l.r||'', awb:l.awb||'', c:C(l.a), ap:Array.isArray(l.ap)?l.ap:[], m:l.m||'', n:l.n||'', v:!!l.v, doc:d.id, ix:(d.lines||[]).indexOf(l), docName:d.fileName||'', src:code};
+      let key = l.t==='pay' ? `pay|${line.d}|${line.c}|${nref(line.r)}` : (nref(line.r) ? `${l.t}|${nref(line.r)}` : `${l.t}|${line.d}|${line.c}`);
+      if(seenHere[key]){ let n=2; while(seenHere[key+'#'+n]) n++; key=key+'#'+n; }
+      seenHere[key]=1;
+      line.key=key;
+      src[code].set(key, line); // newer document replaces older one with the same key
+    });
+  }
+  return {S:[...src.S.values()], K:[...src.K.values()], P:[...src.P.values()], B:[...src.B.values()], cutoff, closing, lastStmt, nDocs, kClosing, kClosingDate, kAsOf, kUploaded};
+}
+
+function latestBankDate(){ let m=''; for(const d of Object.values(state.docs)) if(d.kind==='bank' && (d.docDate||'')>m) m=d.docDate||''; return m; }
+function supplierModel(sid){
+  const g = gather(sid);
+  const res = state.res;
+  const rKey = k => (sid+'__'+k).replace(/[\/#]/g,'_').slice(0,190);
+  /* ---- invoices & credits: statement vs Komet ---- */
+  const invS = g.S.filter(l=>l.t!=='pay'), invK = g.K.filter(l=>l.t!=='pay');
+  const kMap = new Map(invK.map(l=>[l.key,l]));
+  const rows=[], leftS=[];
+  for(const s of invS){ const k=kMap.get(s.key); if(k){ rows.push({s,k}); kMap.delete(s.key); } else leftS.push(s); }
+  const leftK=[...kMap.values()];
+  for(const s of leftS){
+    let bi=-1, bd=1e9;
+    leftK.forEach((k,i)=>{ if(k.t!==s.t||k.c!==s.c) return; const dd=(s.d&&k.d)?Math.abs(dms(s.d)-dms(k.d))/DAY:99; const awbHit=s.awb&&k.awb&&s.awb.replace(/\D/g,'')===k.awb.replace(/\D/g,''); const score=awbHit?-1:dd; if(score<=5&&score<bd){ bd=score; bi=i; } });
+    if(bi>=0){ rows.push({s,k:leftK[bi],soft:true}); leftK.splice(bi,1); } else rows.push({s,k:null});
+  }
+  leftK.forEach(k=>rows.push({s:null,k}));
+  rows.forEach(r=>{
+    const b=r.k||r.s; r.t=b.t; r.d=(r.k&&r.k.d)||(r.s&&r.s.d)||''; r.ref=(r.k&&r.k.r)||(r.s&&r.s.r)||''; r.awb=(r.k&&r.k.awb)||(r.s&&r.s.awb)||'';
+    r.amt = r.k ? r.k.c : r.s.c; r.sign = r.t==='cr'?-1:1; r.open = r.t==='inv' ? r.amt : 0; r.paidBy=[];
+    r.rowKey = 'I-'+r.t+'-'+(nref(r.ref)||(r.d+'-'+r.amt));
+  });
+  /* ---- payments: proof vs Komet vs statement ---- */
+  const pP=g.P.filter(l=>l.t==='pay'), pK=g.K.filter(l=>l.t==='pay'), pS=g.S.filter(l=>l.t==='pay');
+  const used=new Set();
+  let ambig=0;
+  const best=(list,x,win=10)=>{ let b=null, bs=1e9, n=0; for(const y of list){ if(used.has(y)||y.c!==x.c) continue; const refHit=nref(x.r)&&nref(x.r)===nref(y.r); const dd=(x.d&&y.d)?Math.abs(dms(x.d)-dms(y.d))/DAY:99; const sc=refHit?-1:dd; if(sc<=win){ n++; if(sc<bs){ bs=sc; b=y; } } } if(b){ used.add(b); if(n>1&&bs>=0) { ambig++; b._amb=true; } } return b; };
+  const pays=[];
+  [...pP].sort((a,b)=>a.d<b.d?-1:1).forEach(p=>{ pays.push({p, k:best(pK,p), s:best(pS,p)}); });
+  pK.filter(k=>!used.has(k)).forEach(k=>{ used.add(k); pays.push({p:null,k,s:best(pS,k)}); });
+  pS.filter(s=>!used.has(s)).forEach(s=>{ used.add(s); pays.push({p:null,k:null,s}); });
+  const pB=g.B; pays.forEach(r=>{ const base=r.p||r.k||r.s; r.b=best(pB,base,7); });
+  pB.filter(b=>!used.has(b)).forEach(b=>{ used.add(b); pays.push({p:null,k:null,s:null,b}); });
+  const bankCut = latestBankDate();
+  pays.forEach(r=>{ const b=r.p||r.k||r.s||r.b; r.t='pay'; r.d=b.d; r.amt=b.c; r.verified=!!r.b||[r.p,r.k,r.s].some(l=>l&&l.v); r.ambig=[r.k,r.s,r.b].some(l=>l&&l._amb); r.method=(r.p&&r.p.m)||(r.k&&r.k.m)||(r.s&&r.s.m)||(r.b&&r.b.m)||''; r.ref=(r.p&&r.p.r)||(r.k&&r.k.r)||(r.s&&r.s.r)||(r.b&&r.b.r)||''; r.ap=[...new Set([...(r.p?.ap||[]),...(r.k?.ap||[]),...(r.s?.ap||[])])]; r.alloc=[]; r.rowKey='P-'+r.d+'-'+r.amt+'-'+nref(r.ref); });
+  /* ---- allocation: credits & payments to invoices, named invoices first, then oldest first ---- */
+  const invs = rows.filter(r=>r.t==='inv').sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+  const byRef = new Map(invs.map(r=>[nref(r.ref),r]));
+  const crs = rows.filter(r=>r.t==='cr').map(r=>({row:r, d:r.d, amt:r.amt, ap:[...(r.s?.ap||[]),...(r.k?.ap||[])], alloc:[]}));
+  const flows = [...crs, ...pays.map(p=>({row:p, d:p.d, amt:p.amt, ap:p.ap, alloc:p.alloc}))].sort((a,b)=>a.d<b.d?-1:1);
+  let unapplied=0;
+  for(const f of flows){
+    let left=f.amt; const applied=[];
+    const take=inv=>{ if(left<=0||inv.open<=0) return; const x=Math.min(left,inv.open); inv.open-=x; left-=x; f.alloc.push(inv); inv.paidBy.push(f.row); applied.push({inv,x}); };
+    f.ap.forEach(ref=>{ const inv=byRef.get(nref(ref)); if(inv) take(inv); });
+    for(const inv of invs){ if(left<=0) break; take(inv); }
+    unapplied+=left;
+    /* what this payment settles, Bloom-Line style: whole invoices, a split of one, or credit left over */
+    const full=applied.filter(a=>a.inv.open===0), part=applied.filter(a=>a.inv.open>0), parts=[];
+    if(full.length){ const a=full[0].inv.ref||'?', b=full[full.length-1].inv.ref||'?'; parts.push(`${full.length} invoice${full.length>1?'s':''} (${a===b?'#'+a:'#'+a+' – #'+b})`); }
+    part.forEach(p=>parts.push(`${money(p.x)} of #${p.inv.ref||'?'}`));
+    if(left>0) parts.push(`${money(left)} unapplied`);
+    f.row.cov={text:parts.join(' + ')||'nothing yet', result:(part.length||left>0)?'Splits':'Exact'};
+  }
+  /* ---- status ---- */
+  const cut=g.cutoff;
+  const after = d => cut && d && d>cut;
+  rows.forEach(r=>{
+    let st, lb, act='';
+    if(r.s&&r.k){
+      if(r.s.c!==r.k.c){ st='bad'; lb='Amount Δ'; act='Pull the invoice copy. Fix the Komet bill or ask the farm for a credit.'; }
+      else if(r.soft){ st='warn'; lb='Ref differs'; act=`Statement says #${r.s.r||'—'}, Komet says #${r.k.r||'—'}. Correct the invoice number in Komet.`; }
+      else { st='ok'; lb='Matched'; }
+    } else if(r.s && g.kAsOf && r.d && r.d>g.kAsOf){
+      st='pend'; lb='After Komet export'; act=`Dated after the Komet export of ${dshow(g.kAsOf)}. Re-export Komet to check it.`;
+    } else if(r.s){
+      st='bad'; lb = r.t==='cr'?'Credit not in Komet':'Not in Komet'; act = r.t==='cr'?'Record the credit memo in Komet.':'Enter the bill in Komet, or dispute it with the farm if you never received the product.';
+    } else {
+      if(!g.lastStmt){ st='pend'; lb='No statement'; act='Upload a statement from this supplier.'; }
+      else if(after(r.d)){ st='pend'; lb='After statement'; }
+      else if(r.t==='inv' && r.open<=0){ st='ok'; lb='Paid · off stmt'; }
+      else { st='bad'; lb = r.t==='cr'?'Credit not on stmt':'Not on statement'; act = r.t==='cr'?'Ask the farm to apply this credit.':'Ask the farm to confirm this invoice. It may be billed under another number.'; }
+    }
+    r.st=st; r.lb=lb; r.act=act;
+    r.impact = r.s&&r.k ? Math.abs(r.k.c-r.s.c) : r.amt;
+  });
+  pays.forEach(r=>{
+    let st, lb, act='';
+    if(r.p&&r.k&&r.s){ st='ok'; lb='3-way match'; }
+    else if(r.p&&r.s){ st='warn'; lb='Not in Komet'; act='Record this payment in Komet.'; }
+    else if(r.p){
+      if(!g.lastStmt){ st='pend'; lb='No statement'; }
+      else if(after(r.d)){ st='pend'; lb='After statement'; }
+      else if(r.alloc.length && r.alloc.every(i=>!i.s)){ st='ok'; lb='Cleared on stmt'; }
+      else { st='bad'; lb='Not credited'; act='Send this proof of payment to the farm and ask them to apply it.'; }
+      if(!r.k && st!=='bad'){ st = st==='pend'?'pend':'warn'; lb += ' · not in Komet'; act = act || 'Record this payment in Komet.'; }
+      else if(!r.k){ act += ' Also record it in Komet.'; }
+    }
+    else if(!r.k&&!r.s&&r.b){ st='warn'; lb='Bank only'; act='Money left the bank to this supplier but it is not in Komet or the proofs. Record it in Komet and upload the confirmation.'; }
+    else if(r.k&&r.s){ st=r.b?'ok':'warn'; lb=r.b?'Komet + stmt + bank':'No proof'; act=r.b?'':'Upload the wire or check confirmation.'; }
+    else if(r.k){ st= after(r.d)?'pend':'warn'; lb='No proof · off stmt'; act='Upload the proof of payment.'; }
+    else { st='warn'; lb='Statement only'; act='The farm shows a payment you have no record of. Find the bank record and record it in Komet.'; }
+    if(bankCut && !r.b && (r.p||r.k) && r.d && dms(r.d) <= dms(bankCut)-3*DAY){ st='bad'; lb='Not on bank'; act='Recorded as paid but no matching debit on the bank statement. Check the wire went out and was not returned or sent twice.'; }
+    if(r.ambig && st==='ok'){ st='warn'; lb+=' · check pairing'; act='Another payment of the same amount is close in date. Confirm the references match.'; }
+    r.st=st; r.lb=lb; r.act=act; r.impact=r.amt;
+  });
+  [...rows,...pays].forEach(r=>{ const rr=res[rKey(r.rowKey)]; r.resId=rKey(r.rowKey); if(rr && r.st!=='ok'){ r.resolved=rr; r.st0=r.st; r.st='res'; } });
+  /* ---- balances & bridge ---- */
+  const sum=(arr,fn)=>arr.reduce((a,x)=>a+fn(x),0);
+  const signed=l=> l.t==='inv'?l.c:-l.c;
+  const stmtLines = sum(g.S,signed), komet = sum(g.K,signed), proven = sum(g.P.filter(l=>l.t==='pay'),l=>l.c);
+  const stmt = g.closing!=null ? g.closing : stmtLines;
+  const rec = sum(rows,r=>r.sign*r.amt) - sum(pays,r=>r.amt);
+  const bridge=[];
+  if(g.lastStmt){
+    if(g.closing!=null && g.closing!==stmtLines) bridge.push({lb:'Statement total vs. its listed lines', v:stmtLines-g.closing});
+    const add=(lb,v)=>{ if(v) bridge.push({lb,v}); };
+    add('Komet invoices not on statement (incl. pending)', sum(rows.filter(r=>r.t==='inv'&&!r.s),r=>r.amt));
+    add('Komet credits not on statement', -sum(rows.filter(r=>r.t==='cr'&&!r.s),r=>r.amt));
+    add('Amount differences (Komet amount used)', sum(rows.filter(r=>r.s&&r.k),r=>r.sign*(r.k.c-r.s.c)));
+    add('Payments the statement does not show', -sum(pays.filter(r=>!r.s),r=>r.amt));
+  }
+  const all=[...rows,...pays];
+  const nOk=all.filter(r=>r.st==='ok'||r.st==='res').length, nEx=all.filter(r=>r.st==='bad'||r.st==='warn').length;
+  const open=invs.filter(r=>r.open>0);
+  const terms = +(state.suppliers[sid]?.terms ?? 30);
+  rows.forEach(r=>{ r.due = isISO(r.d) ? new Date(dms(r.d)+terms*DAY).toISOString().slice(0,10) : ''; });
+  rows.forEach(r=>{ r.paid = r.t==='inv' ? r.amt-r.open : 0; r.status = r.t!=='inv' ? 'Credit' : r.open===0 ? 'Paid' : r.open<r.amt ? 'Partial' : 'Open'; r.sid=sid; });
+  pays.forEach(p=>{ p.sid=sid; });
+  const invoiced = sum(rows,r=>r.sign*r.amt), paid = sum(pays,r=>r.amt);
+  const lastPay = pays.slice().sort((a,b)=>a.d<b.d?1:-1)[0]||null;
+  const allLines=[...g.S,...g.K,...g.P];
+  const dups=allLines.filter(l=>l.key.includes('#')).map(l=>({ref:l.r, src:l.src, c:l.c}));
+  const awbBad=allLines.filter(l=>l.awb && !/^\d{3}[- ]?\d{8}$/.test(l.awb.trim())).map(l=>({ref:l.r, awb:l.awb, src:l.src}));
+  return {sid, g, rows, pays, stmt, stmtLines, komet, proven, rec, bridge, invoiced, paid, lastPay, dups, awbBad, terms, ambig, hasB:g.nDocs.B>0, nOk, nEx, health: (nOk+nEx)?nOk/(nOk+nEx):null, open, unapplied, hasS:g.nDocs.S>0, hasK:g.nDocs.K>0, hasP:g.nDocs.P>0};
+}
+function computeAll(){
+  const ids = new Set(Object.keys(state.suppliers));
+  Object.values(state.docs).forEach(d=>(d.lines||[]).forEach(l=>{ if(l.s) ids.add(l.s); }));
+  const models = [...ids].map(supplierModel).filter(m=>m.rows.length||m.pays.length||state.suppliers[m.sid]);
+  const T = {rec:0, stmt:0, komet:0, nOk:0, nEx:0, exAmt:0, nStmtSup:0, nKSup:0, invoiced:0, paid:0, nInv:0, nPay:0, lastPay:null, oldest:null, nOpen:0};
+  models.forEach(m=>{ T.invoiced+=m.invoiced; T.paid+=m.paid; T.nInv+=m.rows.filter(r=>r.t==='inv').length; T.nPay+=m.pays.length; T.nOpen+=m.open.length;
+    if(m.lastPay && (!T.lastPay || m.lastPay.d>T.lastPay.d)) T.lastPay=m.lastPay;
+    m.open.forEach(i=>{ if(i.d && (!T.oldest || i.d<T.oldest.d)) T.oldest=i; });
+    T.rec+=m.rec; T.komet+=m.komet; if(m.hasS){ T.stmt+=m.stmt; T.nStmtSup++; } if(m.hasK) T.nKSup++; T.nOk+=m.nOk; T.nEx+=m.nEx; [...m.rows,...m.pays].forEach(r=>{ if(r.st==='bad'||r.st==='warn') T.exAmt+=r.impact; }); });
+  models.sort((a,b)=>Math.abs(b.rec)-Math.abs(a.rec));
+  return {models, T};
+}
+
+/* ================= rendering ================= */
+let curTab='overview', curSup='', mFilter='ex';
+let CM=null;
+const TAB_RENDER = {
+  overview:()=>{ renderSuppliers(); renderChart(); renderOpen(); renderQueue(); renderPlan(); renderAging(); renderFlags(); },
+  intake:()=>{ renderInbox(); renderReviews(); }, match:()=>renderMatch(), invoices:()=>renderInvoices(), payments:()=>renderPayments(),
+  reconcile:()=>{ renderReconcile(); renderChecklist(); }, files:()=>{ renderFiles(); renderActivity(); }
+};
+function render(){
+  CM = computeAll();
+  renderHero(); renderLedger(); renderFresh(); renderBanners(); renderSupSelects(); setStatus();
+  (TAB_RENDER[curTab]||TAB_RENDER.overview)();
+}
+function num(el,target){
+  cancelAnimationFrame(el._raf);
+  const from = el._shown==null?0:el._shown;
+  if(!anim() || from===target){ el._shown=target; el.textContent=money(target); return; }
+  const t0=performance.now(), dur=900;
+  const step=now=>{ const k=Math.min(1,(now-t0)/dur), e=1-Math.pow(1-k,3); const v=k>=1?target:Math.round(from+(target-from)*e); el._shown=v; el.textContent=money(v); if(k<1) el._raf=requestAnimationFrame(step); };
+  el._raf=requestAnimationFrame(step);
+}
+function renderHero(){
+  const {T, models}=CM;
+  num($('v-rec'), T.rec); num($('v-s'), T.stmt); num($('v-k'), T.komet);
+  $('s-rec').textContent = models.length ? `${models.length} supplier${models.length===1?'':'s'} · best evidence across all three sources` : 'Upload a statement, a Komet export or a proof of payment to start';
+  $('s-s').textContent = `${T.nStmtSup} supplier${T.nStmtSup===1?'':'s'} with a statement · gap ${smoney(T.stmt - models.filter(m=>m.hasS).reduce((a,m)=>a+m.rec,0))}`;
+  $('s-k').textContent = `${T.nKSup} supplier${T.nKSup===1?'':'s'} in Komet data · gap ${smoney(T.komet - models.filter(m=>m.hasK).reduce((a,m)=>a+m.rec,0))}`;
+  $('v-x').textContent = T.nEx; $('v-x').className = 'v' + (T.nEx?' bad':'');
+  $('s-x').textContent = T.nEx ? `${money(T.exAmt)} in question` : 'Nothing needs attention';
+  const pct = (T.nOk+T.nEx) ? T.nOk/(T.nOk+T.nEx) : 0;
+  $('ring').style.strokeDashoffset = (289.03*(1-pct)).toFixed(2);
+  $('ring-pct').textContent = (T.nOk+T.nEx) ? Math.round(pct*100)+'%' : '—';
+  $('amb-v').textContent = money(T.rec);
+  $('amb-s').textContent = `STATEMENTS ${money(T.stmt)} · KOMET ${money(T.komet)} · ${T.nEx} EXCEPTIONS`;
+  const ib=$('intakeBadge'); const pending=reviews.filter(r=>r.stage==='review').length; ib.hidden=!pending; ib.textContent=pending;
+}
+function ago(iso){
+  if(!iso) return null; const ms=Date.now()-Date.parse(iso); if(!(ms>=0)) return null;
+  const m=Math.floor(ms/6e4), h=Math.floor(m/60), d=Math.floor(h/24);
+  return d>=1 ? `${d}d ${h%24}h` : h>=1 ? `${h}h ${m%60}m` : `${m}m`;
+}
+function renderFresh(){
+  const kDocs=Object.values(state.docs).filter(d=>d.kind==='komet');
+  const kUp=kDocs.reduce((a,d)=>(d.uploadedAt||'')>a?d.uploadedAt:a,'');
+  const kAsOf=kDocs.reduce((a,d)=>{ const x=d.docDate||(d.uploadedAt||'').slice(0,10); return x>a?x:a; },'');
+  const bank=latestBankDate(), bUp=Object.values(state.docs).filter(d=>d.kind==='bank').reduce((a,d)=>(d.uploadedAt||'')>a?d.uploadedAt:a,'');
+  const ing=state.meta.ingest||null;
+  const waiting=Object.values(state.inbox||{}).filter(x=>x.status==='needs_pdf'||x.status==='needs_review');
+  /* Komet must be at least as recent as each supplier's statement, otherwise newer statement invoices can't be checked */
+  const behind=CM.models.filter(m=>m.g.cutoff && (!m.g.kAsOf || m.g.kAsOf<m.g.cutoff)).map(m=>({n:supName(m.sid), st:m.g.cutoff, k:m.g.kAsOf}));
+  const kCls = !kUp ? 'bad' : (Date.now()-Date.parse(kUp))/DAY>7 ? 'bad' : behind.length ? 'warn' : 'ok';
+  const a=ago(kUp);
+  $('fresh').innerHTML =
+    `<div><div class="fk"><span class="src K">K</span>Time since KometSales export upload</div><div class="fv ${kCls}" id="kAgo">${a?esc(a):'Never'}</div><div class="fs">${kUp?`uploaded ${dshow(kUp.slice(0,10))} · data as of ${dshow(kAsOf)}`:'Drop a Komet export on 02 Intake → K'}</div></div>`+
+    `<div><div class="fk">Komet vs latest statements</div><div class="fv ${behind.length?'warn':'ok'}">${CM.models.some(m=>m.g.cutoff)?(behind.length?`${behind.length} behind`:'In step'):'—'}</div><div class="fs">${behind.length?'Komet export is older than these statements':'Komet covers every statement date'}</div></div>`+
+    `<div><div class="fk"><span class="src B">B</span>Bank statement</div><div class="fv ${bank&&(Date.now()-dms(bank))/DAY<=35?'ok':'warn'}">${bUp?esc(ago(bUp)):'Never'}</div><div class="fs">${bank?'covers to '+dshow(bank):'No bank statement uploaded'}</div></div>`+
+    `<div><div class="fk">Auto-import from compras@</div><div class="fv ${ing&&ing.lastRun&&(Date.now()-Date.parse(ing.lastRun))/DAY<=2?'ok':'warn'}">${ing&&ing.lastRun?esc(ago(ing.lastRun))+' ago':'Not run yet'}</div><div class="fs">${waiting.length?`<a href="#" data-goinbox="1">${waiting.length} statement${waiting.length>1?'s':''} waiting for a PDF or review</a>`:(ing?`last run loaded ${ing.loaded||0}, skipped ${ing.skipped||0}`:'Runs daily at 6:23 PM Miami time')}</div></div>`+
+    (behind.length?`<div class="fwide flag" style="margin:0">${behind.slice(0,8).map(b=>`<b>${esc(b.n)}</b>: statement ${dshow(b.st)}, Komet ${b.k?dshow(b.k):'none'}`).join(' · ')}${behind.length>8?` · +${behind.length-8} more`:''}. Upload a Komet export dated on or after the statement before trusting "Not in Komet".</div>`:'');
+}
+setInterval(()=>{ if(CM && $('kAgo')) renderFresh(); }, 60000);
+function renderInbox(){
+  const box=$('inboxList'); if(!box) return;
+  const items=Object.entries(state.inbox||{}).map(([id,x])=>Object.assign({id},x)).filter(x=>x.status!=='dismissed').sort((a,b)=>(b.received||'')<(a.received||'')?-1:1);
+  const open=items.filter(x=>x.status==='needs_pdf'||x.status==='needs_review');
+  $('inboxCard').hidden=!items.length;
+  box.innerHTML = open.length ? `<table><thead><tr><th>Received</th><th>Supplier</th><th>Type</th><th>As of</th><th class="num">Balance in email</th><th>Why it's waiting</th><th></th></tr></thead><tbody>${open.map(x=>`<tr><td>${esc((x.received||'').slice(0,10))}</td><td>${esc(x.supplier||'?')}</td><td>${esc(x.type||'statement')}</td><td>${dshow(x.date)}</td><td class="num">${x.balance!=null?money(C(x.balance)):'—'}</td><td class="wrap">${esc(x.reason||'Lines are only in the PDF attachment')}${x.link?` · <a href="${esc(x.link)}" target="_blank" rel="noopener">open email</a>`:''}</td><td><button class="small ghost" type="button" data-inboxdone="${esc(x.id)}">Done</button> <button class="small ghost" type="button" data-inboxdismiss="${esc(x.id)}">Dismiss</button></td></tr>`).join('')}</tbody></table><p class="hint">Save the PDF from the email and drop it on the matching box above. Mark it Done once it's loaded.</p>` : `<div class="empty">Nothing waiting. Every statement the auto-import found is loaded.</div>`;
+}
+function renderBanners(){
+  const b=[];
+  const ex=Object.values(state.suppliers).some(s=>s.example) || Object.values(state.docs).some(d=>d.example);
+  if(ex) b.push(`<div class="flag info">Example data is loaded (Example Farm) so you can see every kind of match and mismatch. It is not a real supplier.<button class="small" type="button" data-act="clear-ex">Remove example data</button></div>`);
+  if(mode==='local') b.push(`<div class="flag">This view can't reach the shared ledger, so anything you add stays in this browser only.</div>`);
+  if(mode==='db' && !caps.sample) b.push(`<div class="flag">Automatic reading of PDFs and photos is off in this view. CSV and Excel files still import, and you can type lines in by hand.</div>`);
+  $('banners').innerHTML=b.join('');
+}
+function healthBar(h){ if(h==null) return '<span class="muted">—</span>'; const cls=h>=.9?'':h>=.6?' mid':' low'; return `<span class="health${cls}"><i style="width:${Math.round(h*100)}%"></i></span>${Math.round(h*100)}%`; }
+function srcDots(m){ return `<span class="src S${m.hasS?'':' off'}" title="Statement ${m.hasS?'uploaded':'missing'}">S</span><span class="src K${m.hasK?'':' off'}" title="Komet ${m.hasK?'uploaded':'missing'}">K</span><span class="src P${m.hasP?'':' off'}" title="Proof ${m.hasP?'uploaded':'missing'}">P</span><span class="src B${m.hasB?'':' off'}" title="Bank ${m.hasB?'payments found':'none'}">B</span>`; }
+function renderSuppliers(){
+  const {models}=CM;
+  if(!models.length){ $('supTbl').innerHTML=`<div class="empty">No suppliers yet. Open <b>02 Intake</b> and drop in a farm's statement, your Komet export and your payment confirmations.</div>`; return; }
+  let tS=0,tK=0,tR=0;
+  $('supTbl').innerHTML=`<table><thead><tr><th>Supplier</th><th>Sources</th><th class="num">Statement</th><th class="num">Komet</th><th class="num hide-sm">Paid (proof)</th><th class="num">Reconciled</th><th class="num">Stmt gap</th><th class="hide-sm">Match</th><th class="num">Exceptions</th></tr></thead><tbody>${models.map((m,ix)=>{
+    tS+=m.hasS?m.stmt:0; tK+=m.komet; tR+=m.rec;
+    const gap=m.hasS?m.stmt-m.rec:null;
+    return `<tr data-go="${esc(m.sid)}" tabindex="0" style="--i:${Math.min(ix,26)}"><td>${esc(supName(m.sid))}${state.suppliers[m.sid]?.example?' <span class="pill res">example</span>':''}</td><td>${srcDots(m)}</td><td class="num amtS">${m.hasS?money(m.stmt):'—'}</td><td class="num amtK">${m.hasK?money(m.komet):'—'}</td><td class="num amtP hide-sm">${m.hasP?money(m.proven):'—'}</td><td class="num"><b>${money(m.rec)}</b></td><td class="num ${gap?'delta':''}">${gap==null?'—':smoney(gap)}</td><td class="hide-sm">${healthBar(m.health)}</td><td class="num">${m.nEx?`<span class="pill bad">${m.nEx}</span>`:'<span class="pill ok">0</span>'}</td></tr>`;
+  }).join('')}</tbody><tfoot><tr><td colspan="2">Total</td><td class="num">${money(tS)}</td><td class="num">${money(tK)}</td><td class="hide-sm"></td><td class="num">${money(tR)}</td><td colspan="3"></td></tr></tfoot></table>`;
+}
+function allExceptions(){
+  const out=[];
+  CM.models.forEach(m=>[...m.rows,...m.pays].forEach(r=>{ if(r.st==='bad'||r.st==='warn') out.push({m,r}); }));
+  return out.sort((a,b)=>(a.r.st===b.r.st?0:a.r.st==='bad'?-1:1) || b.r.impact-a.r.impact);
+}
+let queueAll=false;
+function renderQueue(){
+  const ex=allExceptions();
+  if(!ex.length){ $('queue').innerHTML = CM.models.length ? `<div class="flag good">Every invoice and payment agrees across the sources you uploaded.</div>` : `<div class="empty">Exceptions show up here once two or more sources are in.</div>`; return; }
+  const lim = queueAll ? 200 : 12;
+  $('queue').innerHTML=`<table><thead><tr><th>Supplier</th><th>Item</th><th>Status</th><th class="num">Impact</th><th class="hide-sm">Next step</th></tr></thead><tbody>${ex.slice(0,lim).map(({m,r},ix)=>`<tr data-go="${esc(m.sid)}" tabindex="0" style="--i:${Math.min(ix,26)}"><td>${esc(supName(m.sid))}</td><td>${r.t==='pay'?'Payment':TYPE_LABEL[r.t]} ${esc(r.ref?('#'+r.ref):'')}<div class="muted" style="font-size:11.5px">${dshow(r.d)}</div></td><td><span class="pill ${r.st}">${esc(r.lb)}</span></td><td class="num">${money(r.impact)}</td><td class="wrap hide-sm">${esc(r.act)}</td></tr>`).join('')}</tbody></table>${ex.length>12?`<div class="toolbar" style="margin-top:8px"><span class="hint" style="margin:0">Showing ${Math.min(lim,ex.length)} of ${ex.length}.</span><button class="small ghost" type="button" id="qMore">${queueAll?'Show top 12':'Show all'}</button></div>`:''}`;
+  const qb=$('qMore'); if(qb) qb.onclick=()=>{ queueAll=!queueAll; renderQueue(); };
+}
+function renderAging(){
+  const t=dms(todayISO());
+  const open=[]; CM.models.forEach(m=>m.open.forEach(i=>open.push(i)));
+  const B=[['0–30 days',0,30,'#7ddc6a'],['31–60 days',31,60,'#c9e157'],['61–90 days',61,90,'#ffa24a'],['91+ days',91,1e6,'#ff7456']];
+  if(!open.length){ $('aging').innerHTML='<div class="empty">Nothing open.</div>'; return; }
+  const sums=B.map(([l,a,b])=>open.filter(i=>{ if(!i.d) return a===0; const d=Math.floor((t-dms(i.d))/DAY); return d>=a&&d<=b; }).reduce((s,i)=>s+i.open,0));
+  const mx=Math.max(...sums,1), R=84; let petals='';
+  B.forEach((b,k)=>{
+    const a1=(-90+k*90+3)*Math.PI/180, a2=(-90+(k+1)*90-3)*Math.PI/180, r=sums[k]>0?16+(R-16)*Math.sqrt(sums[k]/mx):0;
+    if(r>0) petals+=`<path class="petal" style="--i:${k}" fill="${b[3]}" stroke="${b[3]}" d="M100 100 L${(100+r*Math.cos(a1)).toFixed(1)} ${(100+r*Math.sin(a1)).toFixed(1)} A${r.toFixed(1)} ${r.toFixed(1)} 0 0 1 ${(100+r*Math.cos(a2)).toFixed(1)} ${(100+r*Math.sin(a2)).toFixed(1)} Z"><title>${b[0]}: ${money(sums[k])}</title></path>`;
+  });
+  const guides=[.33,.66,1].map(f=>`<circle cx="100" cy="100" r="${(16+(R-16)*f).toFixed(1)}" fill="none" stroke="rgba(255,162,74,.16)" stroke-dasharray="2 4"/>`).join('');
+  $('aging').innerHTML=`<div class="petalBox"><svg viewBox="0 0 200 200" role="img" aria-label="Aging of open invoices">${guides}<line x1="100" y1="12" x2="100" y2="188" stroke="rgba(255,162,74,.12)"/><line x1="12" y1="100" x2="188" y2="100" stroke="rgba(255,162,74,.12)"/>${petals}</svg><div class="legend">${B.map((b,k)=>`<div class="lg"><i style="background:${b[3]};color:${b[3]}"></i><span>${b[0]}</span><span class="amt">${money(sums[k])}</span></div>`).join('')}<div class="hint">Open after applying every payment and credit, by invoice date.</div></div></div>`;
+}
+function renderFlags(){
+  const f=[]; const t=dms(todayISO());
+  CM.models.forEach(m=>{
+    const n=esc(supName(m.sid));
+    if(m.ambig) f.push(`<div class="flag">${n}: ${m.ambig} payment pairing${m.ambig>1?'s are':' is'} ambiguous (same amount, close dates). Check the references on 05 Payments.</div>`);
+    const bo=m.pays.filter(p=>p.b&&!p.p&&!p.k).length; if(bo) f.push(`<div class="flag bad">${n}: ${bo} bank payment${bo>1?'s':''} with no proof and not in Komet.</div>`);
+    if(!m.hasS && !m.hasK && !m.hasP && state.suppliers[m.sid]?.expect!==false) f.push(`<div class="flag">${n}: no documents yet. Request a statement.</div>`);
+    if(!m.hasS && (m.hasK||m.hasP)) f.push(`<div class="flag">${n}: no statement uploaded yet, so nothing can be checked against the farm's numbers.</div>`);
+    else if(m.g.cutoff && (t-dms(m.g.cutoff))/DAY>35) f.push(`<div class="flag">${n}: latest statement is from ${dshow(m.g.cutoff)}. Ask for a current one.</div>`);
+    if(!m.hasK && m.hasS) f.push(`<div class="flag">${n}: not in any Komet upload yet.</div>`);
+    if(m.unapplied>0) f.push(`<div class="flag bad">${n}: ${money(m.unapplied)} of payments and credits exceeds every known invoice. Check for a missing invoice or a double-recorded payment.</div>`);
+    m.dups.slice(0,3).forEach(x=>f.push(`<div class="flag">${n}: invoice #${esc(x.ref)} appears more than once in the same ${x.src==='S'?'statement':x.src==='K'?'Komet file':'proof'} (${money(x.c)}). Confirm it's a real split, not a double entry.</div>`));
+    if(m.awbBad.length) f.push(`<div class="flag">${n}: ${m.awbBad.length} AWB${m.awbBad.length>1?'s are':' is'} not in the usual 3 + 8 digit format (e.g. "${esc(m.awbBad[0].awb)}" on #${esc(m.awbBad[0].ref)}).</div>`);
+    const unv=m.pays.filter(p=>!p.verified).length; if(unv) f.push(`<div class="flag info">${n}: ${unv} of ${m.pays.length} payment${m.pays.length>1?'s are':' is'} not yet marked as bank-verified (see 06 Reconcile).</div>`);
+    const spl=m.pays.filter(p=>p.cov&&p.cov.result==='Splits').length; if(spl) f.push(`<div class="flag">${n}: ${spl} payment${spl>1?'s':''} split an invoice instead of clearing whole invoices (see 06 Reconcile).</div>`);
+    if(m.g.closing!=null && m.g.closing!==m.stmtLines) f.push(`<div class="flag">${n}: the statement's balance (${money(m.g.closing)}) differs from the lines read from it (${money(m.stmtLines)}). The statement may have an opening balance or a page that didn't read. Check the bridge.</div>`);
+  });
+  $('flags').innerHTML = f.length ? f.slice(0,20).join('') : `<div class="flag good">No data problems found.</div>`;
+}
+function renderSupSelects(){
+  const ids=CM.models.map(m=>m.sid);
+  Object.keys(state.suppliers).forEach(id=>{ if(!ids.includes(id)) ids.push(id); });
+  const opts=ids.map(id=>`<option value="${esc(id)}">${esc(supName(id))}</option>`).join('');
+  if(!curSup || !ids.includes(curSup)) curSup=ids[0]||'';
+  const ss=$('supSel'); ss.innerHTML = opts || '<option value="">No suppliers yet</option>'; ss.value=curSup;
+  const hs=$('hintSup'); const hv=hs.value; hs.innerHTML='<option value="">Detect from the document</option>'+opts; hs.value=ids.includes(hv)?hv:'';
+  ['chartSup','invSup','paySup'].forEach(id=>{ const s=$(id), v=s.value; s.innerHTML='<option value="">All suppliers</option>'+opts; s.value=ids.includes(v)?v:''; });
+  const rs=$('recSup'), rv=rs.value; rs.innerHTML=opts||'<option value="">No suppliers yet</option>'; rs.value=ids.includes(rv)?rv:(ids.includes(curSup)?curSup:(ids[0]||''));
+}
+function lineCell(l,cls){ if(!l) return '<td class="num muted">—</td>'; return `<td class="num ${cls}"><a href="#" data-edit="${esc(l.doc)}|${l.ix}" title="${esc(l.docName)}${l.r?' · #'+esc(l.r):''}">${money(l.c)}</a></td>`; }
+function stCell(r){
+  const pill=`<span class="pill ${r.st}">${esc(r.st==='res'?'Resolved':r.lb)}</span>`;
+  const btn = (r.st==='bad'||r.st==='warn') ? ` <button class="small ghost" type="button" data-res="${esc(r.resId)}" data-lb="${esc(r.lb)}">Resolve</button>` : r.st==='res' ? ` <button class="small ghost" type="button" data-unres="${esc(r.resId)}" title="${esc(r.resolved.note||'')}">Reopen</button>` : '';
+  return `<td>${pill}${btn}${r.st==='res'&&r.resolved.note?`<div class="muted" style="font-size:11.5px;white-space:normal">${esc(r.resolved.note)}</div>`:''}</td>`;
+}
+const passF = r => mFilter==='all' || (mFilter==='ex' ? (r.st==='bad'||r.st==='warn') : (r.st==='ok'||r.st==='res'));
+function renderMatch(){
+  const m=CM.models.find(x=>x.sid===curSup);
+  if(!m){ $('matchBody').innerHTML=`<div class="card"><div class="empty">Pick a supplier once documents are in.</div></div>`; return; }
+  const gapS = m.hasS ? m.stmt-m.rec : null, gapK = m.hasK ? m.komet-m.rec : null;
+  const tri=`<div class="tri"><div><div class="k"><span class="src S">S</span>Statement${m.g.cutoff?' · '+dshow(m.g.cutoff):''}</div><div class="v s-col">${m.hasS?money(m.stmt):'—'}</div><div class="s">${gapS==null?'No statement yet':'vs reconciled '+smoney(gapS)}</div></div><div><div class="k"><span class="src K">K</span>Komet${m.g.kAsOf?' · '+dshow(m.g.kAsOf):''}</div><div class="v k-col">${m.hasK?money(m.komet):'—'}</div><div class="s">${gapK==null?'No Komet data yet':'vs reconciled '+smoney(gapK)}</div></div><div><div class="k"><span class="src P">P</span>Proven paid</div><div class="v p-col">${money(m.proven)}</div><div class="s">${m.pays.filter(p=>p.p).length} payment${m.pays.filter(p=>p.p).length===1?'':'s'} with proof</div></div><div><div class="k">Reconciled owed</div><div class="v">${money(m.rec)}</div><div class="s">${healthBar(m.health)} matched</div></div></div>`;
+  let bridge='';
+  if(m.hasS){
+    const tot = m.stmtLines + (m.g.closing!=null ? 0 : 0);
+    bridge=`<div class="card"><h2>Bridge · statement to reconciled</h2><div class="bridge"><div class="br"><span>Statement balance</span><span class="amtS">${money(m.stmt)}</span></div>${m.bridge.map(b=>`<div class="br"><span>${esc(b.lb)}</span><span>${smoney(b.v)}</span></div>`).join('')}<div class="br tot"><span>Reconciled owed</span><span>${money(m.stmt + m.bridge.reduce((a,b)=>a+b.v,0))}</span></div></div>${(m.stmt + m.bridge.reduce((a,b)=>a+b.v,0))!==m.rec?`<p class="hint">Bridge and reconciled total differ by ${money(m.rec-(m.stmt+m.bridge.reduce((a,b)=>a+b.v,0)))}; payments listed only on the statement are counted in both.</p>`:''}</div>`;
+  }
+  const iv=m.rows.filter(passF).sort((a,b)=>a.d<b.d?1:-1), pv=m.pays.filter(passF).sort((a,b)=>a.d<b.d?1:-1);
+  const invT = iv.length ? `<table><thead><tr><th>Date</th><th>Type</th><th>Invoice #</th><th class="hide-sm">AWB</th><th class="num"><span class="src S">S</span>Statement</th><th class="num"><span class="src K">K</span>Komet</th><th class="num">Δ</th><th class="num hide-sm">Open</th><th>Status</th></tr></thead><tbody>${iv.map((r,ix)=>`<tr style="--i:${Math.min(ix,26)}"><td>${dshow(r.d)}</td><td>${TYPE_LABEL[r.t]}</td><td>${esc(r.ref)}${r.soft?`<div class="muted" style="font-size:11px">S #${esc(r.s.r)} · K #${esc(r.k.r)}</div>`:''}</td><td class="hide-sm">${esc(r.awb)}</td>${lineCell(r.s,'amtS')}${lineCell(r.k,'amtK')}<td class="num ${r.s&&r.k&&r.s.c!==r.k.c?'delta':'muted'}">${r.s&&r.k&&r.s.c!==r.k.c?smoney(r.k.c-r.s.c):'—'}</td><td class="num hide-sm">${r.t==='inv'?money(r.open):'—'}</td>${stCell(r)}</tr>`).join('')}</tbody></table>` : `<div class="empty">No invoices in this view.</div>`;
+  const payT = pv.length ? `<table><thead><tr><th>Date</th><th>Reference</th><th class="num"><span class="src P">P</span>Proof</th><th class="num"><span class="src K">K</span>Komet</th><th class="num"><span class="src S">S</span>Statement</th><th class="num"><span class="src B">B</span>Bank</th><th class="hide-sm">Applied to</th><th>Status</th></tr></thead><tbody>${pv.map((r,ix)=>`<tr style="--i:${Math.min(ix,26)}"><td>${dshow(r.d)}</td><td>${esc(r.ref)}${r.p&&r.p.m?`<div class="muted" style="font-size:11px">${esc(r.p.m)}</div>`:''}</td>${lineCell(r.p,'amtP')}${lineCell(r.k,'amtK')}${lineCell(r.s,'amtS')}${lineCell(r.b,'amtB')}<td class="wrap hide-sm">${r.alloc.length?r.alloc.map(i=>'#'+esc(i.ref||'?')).join(', '):'<span class="muted">—</span>'}</td>${stCell(r)}</tr>`).join('')}</tbody></table>` : `<div class="empty">No payments in this view.</div>`;
+  const exs=[...m.rows,...m.pays].filter(r=>r.st==='bad'||r.st==='warn');
+  $('matchBody').innerHTML = tri + `<div class="grid2" style="margin-bottom:12px"><div class="card"><h2>What to do for ${esc(supName(m.sid))}</h2>${exs.length?exs.sort((a,b)=>b.impact-a.impact).slice(0,8).map(r=>`<div class="flag ${r.st==='bad'?'bad':''}"><b>${esc(r.lb)}</b> · ${r.t==='pay'?'payment':TYPE_LABEL[r.t].toLowerCase()} ${esc(r.ref?'#'+r.ref:'')} ${money(r.impact)}. ${esc(r.act)}</div>`).join(''):'<div class="flag good">Nothing to chase with this supplier.</div>'}</div>${bridge||`<div class="card"><h2>Bridge</h2><div class="empty">Upload a statement from this supplier to see how its balance ties to yours.</div></div>`}</div>`
+    + `<div class="card" style="margin-bottom:12px"><h2>Invoices &amp; credits · statement vs Komet</h2><div class="scroll">${invT}</div></div>`
+    + `<div class="card"><h2>Payments · proof vs Komet vs statement</h2><div class="scroll">${payT}</div><p class="hint">Click any amount to correct or delete that line.</p></div>`;
+}
+function renderFiles(){
+  const docs=Object.entries(state.docs).map(([id,d])=>Object.assign({id},d)).sort((a,b)=>(b.uploadedAt||'')<(a.uploadedAt||'')?-1:1);
+  $('docTbl').innerHTML = docs.length ? `<table><thead><tr><th>Uploaded</th><th>Kind</th><th>File</th><th class="hide-sm">Doc date</th><th>Supplier</th><th class="num">Lines</th><th class="num hide-sm">Total</th><th></th></tr></thead><tbody>${docs.map(d=>{
+    const k=KIND[d.kind]||{code:'?',label:d.kind}; const sids=[...new Set((d.lines||[]).map(l=>l.s))];
+    const tot=(d.lines||[]).reduce((a,l)=>a+(l.t==='inv'?C(l.a):-C(l.a)),0);
+    const link = d.assetId ? `<a href="/_blob/${esc(d.assetId)}" target="_blank" rel="noopener">${esc(d.fileName||'file')}</a>` : esc(d.fileName||'Manual entry');
+    return `<tr><td>${esc((d.uploadedAt||'').slice(0,10))}</td><td><span class="src ${k.code}">${k.code}</span><span class="hide-sm">${esc(k.label)}</span></td><td class="wrap">${link}${d.example?' <span class="pill res">example</span>':''}</td><td class="hide-sm">${dshow(d.docDate)}</td><td class="wrap">${sids.map(s=>esc(supName(s))).join(', ')||'—'}</td><td class="num">${(d.lines||[]).length}</td><td class="num hide-sm">${money(tot)}</td><td><button class="small danger" type="button" data-deldoc="${esc(d.id)}">Delete</button></td></tr>`;
+  }).join('')}</tbody></table>` : `<div class="empty">Nothing uploaded yet.</div>`;
+  const sups=Object.entries(state.suppliers).sort((a,b)=>a[1].name.localeCompare(b[1].name));
+  $('supEdit').innerHTML = sups.length ? `<table><thead><tr><th>Name</th><th class="num">Lines</th><th>Terms</th><th></th></tr></thead><tbody>${sups.map(([id,s])=>{ const n=Object.values(state.docs).reduce((a,d)=>a+(d.lines||[]).filter(l=>l.s===id).length,0); return `<tr><td class="wrap">${esc(s.name)}${(s.aliases||[]).length?`<div class="muted" style="font-size:11.5px">also: ${esc(s.aliases.join(', '))}</div>`:''}</td><td class="num">${n}</td><td class="muted">${s.terms??30}d${s.startDate?' · from '+dshow(s.startDate):''}${s.expect===false?' · no stmt expected':''}</td><td><button class="small" type="button" data-settings="${esc(id)}">Settings</button> <button class="small" type="button" data-rename="${esc(id)}">Rename</button> <button class="small" type="button" data-merge="${esc(id)}">Merge</button></td></tr>`; }).join('')}</tbody></table>` : `<div class="empty">Suppliers appear here as documents come in.</div>`;
+}
+
+/* ================= closed-loop views ================= */
+function renderPlan(){
+  const t=todayISO(), d7=new Date(dms(t)+7*DAY).toISOString().slice(0,10), d14=new Date(dms(t)+14*DAY).toISOString().slice(0,10);
+  const open=[]; CM.models.forEach(m=>m.open.forEach(i=>open.push(i)));
+  const B=[['Overdue',i=>i.due&&i.due<t,'var(--bad)'],['Due in 7 days',i=>i.due>=t&&i.due<=d7,'var(--warn)'],['Due in 8–14 days',i=>i.due>d7&&i.due<=d14,'var(--amber)'],['Later',i=>!i.due||i.due>d14,'var(--ok)']];
+  if(!open.length){ $('plan').innerHTML='<div class="empty">Nothing open.</div>'; return; }
+  const bySup={}; open.filter(i=>i.due&&i.due<=d7).forEach(i=>{ bySup[i.sid]=(bySup[i.sid]||0)+i.open; });
+  const top=Object.entries(bySup).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  $('plan').innerHTML=`<div class="kv">${B.map(([l,f,c])=>{ const L=open.filter(f); return `<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${c};margin-right:7px"></i>${l} <span class="muted">· ${L.length}</span></span><span class="big">${money(L.reduce((a,i)=>a+i.open,0))}</span>`; }).join('')}</div>`
+    + (top.length?`<div class="hint" style="margin-top:10px">To pay by ${dshow(d7)}:</div><div class="kv" style="margin-top:4px;font-size:13px">${top.map(([sid,v])=>`<span>${esc(supName(sid))} <span class="muted">· ${state.suppliers[sid]?.terms??30}d terms</span></span><span class="big" style="font-size:14px">${money(v)}</span>`).join('')}</div>`:'')
+    + `<div class="hint">Due date = invoice date + supplier terms (set in 07 → Settings). Open amounts are after every payment and credit.</div>`;
+}
+function renderChecklist(){
+  const t=dms(todayISO()), bankCut=latestBankDate(), fresh=d=>d&&(t-dms(d))/DAY<=35;
+  const rows=CM.models.filter(m=>state.suppliers[m.sid]?.expect!==false || m.rows.length);
+  if(!rows.length){ $('checklist').innerHTML='<div class="empty">Add suppliers to see the checklist.</div>'; return; }
+  const mark=(ok,why)=>`<td title="${esc(why)}">${ok===null?'<span class="muted">—</span>':ok?'<span class="pill ok">✓</span>':'<span class="pill bad">✗</span>'}</td>`;
+  let done=0;
+  const body=rows.map(m=>{
+    const kLast=m.g.K.reduce((a,l)=>l.d>a?l.d:a,'');
+    const kTie = m.g.kClosing==null ? null : m.g.kClosing===m.komet;
+    const chk=[ fresh(m.g.cutoff), fresh(kLast), m.pays.length?m.pays.every(p=>!!p.p):null, bankCut?(fresh(bankCut)&&m.pays.every(p=>p.verified)):false, kTie, m.nEx===0 ];
+    const ok=chk.every(x=>x===null||x===true); if(ok) done++;
+    return `<tr data-go="${esc(m.sid)}" tabindex="0"><td>${esc(supName(m.sid))}</td>${mark(chk[0],'Statement dated in the last 35 days')}${mark(chk[1],'Komet data in the last 35 days')}${mark(chk[2],'Every payment has a proof file')}${mark(chk[3],'Bank statement in the last 35 days and every payment found on it')}${mark(chk[4],'Komet lines add up to the Komet report total')}${mark(chk[5],'No open exceptions')}<td>${ok?'<span class="pill ok">Closed</span>':'<span class="pill warn">Open</span>'}</td></tr>`;
+  }).join('');
+  $('checklist').innerHTML=`<div class="hint" style="margin-top:0">${done} of ${rows.length} suppliers closed. A supplier is closed when every check is ✓ (— means it doesn't apply).</div><table><thead><tr><th>Supplier</th><th>Statement</th><th>Komet</th><th>Proofs</th><th>Bank</th><th>Komet total</th><th>Exceptions</th><th>Month</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+function renderActivity(){
+  const L=Object.values(state.log||{}).sort((a,b)=>a.ts<b.ts?1:-1).slice(0,200);
+  $('actLog').innerHTML = L.length ? `<table><thead><tr><th>When</th><th>What</th></tr></thead><tbody>${L.map(x=>`<tr><td>${esc(new Date(x.ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}</td><td class="wrap">${esc(x.text)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Every upload, edit, delete, resolve and restore is listed here.</div>';
+}
+function settingsDlg(id){
+  const s=state.suppliers[id]; if(!s) return;
+  openDlg(`<h2 id="dlgTitle">Settings · ${esc(s.name)}</h2>
+  <div class="row2"><div class="f"><label for="st-t">Payment terms (days)</label><input id="st-t" inputmode="numeric" value="${esc(s.terms??30)}"></div><div class="f"><label for="st-s">Track from (period start)</label><input id="st-s" type="date" value="${esc(s.startDate||'')}"></div></div>
+  <div class="f"><label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px;text-transform:none;letter-spacing:0"><input type="checkbox" id="st-e" ${s.expect===false?'':'checked'}> Expect a statement every month</label></div>
+  <p class="hint">Komet and payment lines dated before the start date are ignored, so older history doesn't show up as errors. Statements always count in full.</p>
+  <div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Save</button></div>`, async()=>{
+    const terms=parseInt($('st-t').value,10); if(!(terms>=0&&terms<=365)){ toast('Terms must be between 0 and 365 days.'); return false; }
+    await patch('suppliers', id, {terms, startDate:$('st-s').value||'', expect:$('st-e').checked}); logAct(`Changed settings for ${s.name}: ${terms} day terms${$('st-s').value?', tracking from '+$('st-s').value:''}`); toast('Settings saved');
+  });
+}
+function addSupplierDlg(){
+  openDlg(`<h2 id="dlgTitle">Add supplier</h2><div class="f"><label for="as-n">Name</label><input id="as-n" required placeholder="e.g. Golden Flowers"></div><div class="f"><label for="as-t">Payment terms (days)</label><input id="as-t" inputmode="numeric" value="30"></div><div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Add</button></div>`, async()=>{
+    const name=$('as-n').value.trim(); if(!name){ toast('Type the supplier name.'); return false; }
+    const ex=matchSupplier(name); if(ex && nname(state.suppliers[ex].name)===nname(name)){ toast(`${state.suppliers[ex].name} already exists.`); return false; }
+    const id=slug(name); await put('suppliers', id, {name, aliases:[], terms:parseInt($('as-t').value,10)||30, expect:true, createdAt:new Date().toISOString()}); logAct('Added supplier '+name); toast('Supplier added');
+  });
+}
+
+/* ================= ledger views (ported from Surandina Bloom-Line) ================= */
+const daysAgo = d => isISO(d) ? Math.floor((dms(todayISO())-dms(d))/DAY) : null;
+const pickModels = sel => sel ? CM.models.filter(m=>m.sid===sel) : CM.models;
+function renderLedger(){
+  const {T}=CM;
+  num($('v-inv'), T.invoiced); $('s-inv').textContent=`${T.nInv} invoices · net of credits`;
+  num($('v-paid'), T.paid); const pct = T.invoiced>0 ? Math.max(0,Math.min(1,T.paid/T.invoiced)) : 0;
+  $('s-paid').textContent=`${T.nPay} payments · ${(pct*100).toFixed(1)}% settled`;
+  if(T.lastPay){ num($('v-last'), T.lastPay.amt); $('s-last').textContent=`${dshow(T.lastPay.d)} · ${daysAgo(T.lastPay.d)} days ago · ${supName(T.lastPay.sid)}`; }
+  else { $('v-last').textContent='—'; $('v-last')._shown=null; $('s-last').textContent='none recorded yet'; }
+  if(T.oldest){ $('v-old').textContent=daysAgo(T.oldest.d)+' days'; $('v-old').className='v'+(daysAgo(T.oldest.d)>60?' bad':''); $('s-old').textContent=`#${T.oldest.ref} · ${supName(T.oldest.sid)} · ${T.nOpen} open`; }
+  else { $('v-old').textContent='—'; $('s-old').textContent='nothing open'; }
+  $('amb-s').textContent = `${T.nOpen} OPEN INVOICES${T.oldest?' · OLDEST '+daysAgo(T.oldest.d)+' DAYS':''}${T.lastPay?' · LAST PAYMENT '+daysAgo(T.lastPay.d)+' DAYS AGO':''} · ${T.nEx} EXCEPTIONS`;
+}
+function niceStep(raw){ if(!(raw>0)) return 1; const mag=Math.pow(10,Math.floor(Math.log10(raw))); for(const m of [1,2,2.5,5,10]) if(m*mag>=raw) return m*mag; return 10*mag; }
+let chartModel=null, chartRange=12;
+function renderChart(){
+  const ev=[];
+  pickModels($('chartSup').value).forEach(m=>{
+    m.rows.forEach(r=>{ if(isISO(r.d)) ev.push([r.d, r.sign*r.amt, 'i', `${r.t==='cr'?'CREDIT':'INV'} #${r.ref||'—'} ${r.t==='cr'?'−':'+'}${money(r.amt)}`]); });
+    m.pays.forEach(p=>{ if(isISO(p.d)) ev.push([p.d, -p.amt, 'p', `PAYMENT −${money(p.amt)}`]); });
+  });
+  ev.sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:0);
+  if(!ev.length){ $('chart').innerHTML='<div class="empty">No dated invoices or payments yet.</div>'; chartModel=null; return; }
+  const today=dms(todayISO());
+  const start = chartRange ? today - chartRange*30.44*DAY : dms(ev[0][0]);
+  let bal=0, startBal=0; const pts=[], evs=[];
+  for(const [d,c,k,lab] of ev){ const x=dms(d); bal+=c; if(x<start) startBal=bal; else { pts.push([x,bal,k]); evs.push({x,bal,label:lab}); } }
+  const W=640,H=250,L=64,R=12,T=12,Bt=28;
+  const series=[[start,startBal]]; pts.forEach(p=>{ series.push([p[0],series[series.length-1][1]]); series.push([p[0],p[1]]); });
+  series.push([Math.max(today,series[series.length-1][0]),series[series.length-1][1]]);
+  const ys=series.map(s=>s[1]/100); let lo=Math.min(0,...ys), hi=Math.max(...ys,1);
+  const step=niceStep((hi-lo)/4); lo=Math.floor(lo/step)*step; hi=Math.ceil(hi/step)*step; if(hi===lo) hi=lo+step;
+  const X=x=>L+(x-start)/(Math.max(today-start,DAY))*(W-L-R), Y=y=>T+(hi-y)/(hi-lo)*(H-T-Bt);
+  chartModel={start,today,W,L,R,evs,startBal,X,Y};
+  let g='';
+  for(let v=lo; v<=hi+1e-9; v+=step){ const y=Y(v); g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="rgba(255,162,74,.13)"/><text x="${L-6}" y="${y+4}" text-anchor="end">${fmt.format(v).replace('.00','')}</text>`; }
+  const span=(today-start)/DAY, stepM = span>900?12 : span>300?3 : 1;
+  const sd=new Date(start); let cur=Date.UTC(sd.getUTCFullYear(),sd.getUTCMonth()+1,1), n=0;
+  while(cur<=today){ const dd=new Date(cur); if(n%stepM===0){ const x=X(cur); g+=`<line x1="${x}" x2="${x}" y1="${T}" y2="${H-Bt}" stroke="rgba(255,162,74,.1)" stroke-dasharray="2 3"/><text x="${x}" y="${H-10}" text-anchor="middle">${dd.toLocaleString('en-US',{month:'short',timeZone:'UTC'})} '${String(dd.getUTCFullYear()).slice(2)}</text>`; } n++; cur=Date.UTC(dd.getUTCFullYear(),dd.getUTCMonth()+1,1); }
+  const path=series.map((s,k)=>(k?'L':'M')+X(s[0]).toFixed(1)+' '+Y(s[1]/100).toFixed(1)).join(' ');
+  const dots=pts.filter(p=>p[2]==='p').map(p=>`<circle class="pay-dot" cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]/100).toFixed(1)}" r="3.6"/>`).join('');
+  $('chart').innerHTML=`<svg id="cs" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Balance owed over time. Hover or drag to read values.">${g}<path class="trace" pathLength="1" d="${path}" fill="none" stroke="#ffa24a" stroke-width="2.2"/>${dots}<g id="xh" style="display:none"><line id="xl" y1="${T}" y2="${H-Bt}" stroke="rgba(255,162,74,.6)" stroke-dasharray="3 3"/><circle id="xc" r="4.5" fill="#ffa24a"/></g></svg><div id="xr">Hover or drag across the trace to read the balance on any date.</div>`;
+}
+function scrub(e){
+  const m=chartModel, svg=$('cs'); if(!m||!svg) return;
+  const r=svg.getBoundingClientRect(); const vx=(e.clientX-r.left)/r.width*m.W;
+  const f=Math.max(0,Math.min(1,(vx-m.L)/(m.W-m.L-m.R))); const tt=m.start+f*Math.max(m.today-m.start,DAY);
+  let idx=-1; for(let k=0;k<m.evs.length;k++){ if(m.evs[k].x<=tt) idx=k; else break; }
+  const bal=idx>=0?m.evs[idx].bal:m.startBal; const x=m.X(tt), y=m.Y(bal/100);
+  $('xh').style.display=''; $('xl').setAttribute('x1',x); $('xl').setAttribute('x2',x); $('xc').setAttribute('cx',x); $('xc').setAttribute('cy',y);
+  $('xr').textContent=`${dshow(new Date(tt).toISOString().slice(0,10))} · balance ${money(bal)}${idx>=0?' · last: '+m.evs[idx].label:''}`;
+}
+$('chart').addEventListener('pointermove',scrub); $('chart').addEventListener('pointerdown',scrub);
+$('chart').addEventListener('pointerleave',()=>{ const h=$('xh'); if(h){ h.style.display='none'; $('xr').textContent='Hover or drag across the trace to read the balance on any date.'; } });
+
+function rowKeyOf(r){ const l=r.p||r.k||r.s||r.b; return l ? `${l.doc}|${l.ix}` : ''; }
+function invTable(rows, sortable, withSup){
+  const arrow = invSort==='asc'?' ▲':' ▼';
+  return `<table><thead><tr><th ${sortable?'data-sort="date" title="Click to reverse order"':''}>Date${sortable?arrow:''}</th>${withSup?'<th>Supplier</th>':''}<th>Invoice</th><th class="hide-sm">AWB</th><th class="hide-sm">Sources</th><th class="num">Amount</th><th class="num hide-sm">Paid</th><th class="num">Open</th><th>Status</th></tr></thead><tbody>`+
+    rows.map((i,ix)=>`<tr data-row="${esc(rowKeyOf(i))}" tabindex="0" style="--i:${Math.min(ix,26)}"><td>${dshow(i.d)}</td>${withSup?`<td>${esc(supName(i.sid))}</td>`:''}<td>${esc(i.ref)}${i.t==='cr'?' <span class="pill res">credit</span>':''}</td><td class="hide-sm">${esc(i.awb)}</td><td class="hide-sm"><span class="src S${i.s?'':' off'}">S</span><span class="src K${i.k?'':' off'}">K</span></td><td class="num">${money(i.sign*i.amt)}</td><td class="num hide-sm">${i.t==='inv'?money(i.paid):'—'}</td><td class="num">${i.t==='inv'?money(i.open):'—'}</td><td>${i.t==='inv'?`<span class="pill ${i.status}">${i.status}</span>`:'<span class="pill res">Credit</span>'}</td></tr>`).join('')+`</tbody></table>`;
+}
+function renderOpen(){
+  const open=[]; CM.models.forEach(m=>m.open.forEach(i=>open.push(i)));
+  open.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+  $('openTbl').innerHTML = open.length ? invTable(open.slice(0,15),false,true) + (open.length>15?`<div class="hint">Showing the oldest 15 of ${open.length}. See 04 Invoices for all.</div>`:'') : '<div class="empty">No open invoices.</div>';
+}
+let invFilter='all', invSort='desc', invLimit=300;
+function renderInvoices(){
+  let rows=[]; pickModels($('invSup').value).forEach(m=>rows.push(...m.rows));
+  const yrs=[...new Set(rows.map(i=>(i.d||'').slice(0,4)).filter(Boolean))].sort().reverse();
+  const sel=$('yr'), keep=sel.value||'all';
+  sel.innerHTML='<option value="all">All years</option>'+yrs.map(y=>`<option value="${y}">${y}</option>`).join('');
+  sel.value = yrs.includes(keep)||keep==='all' ? keep : 'all';
+  rows.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0); if(invSort==='desc') rows.reverse();
+  if(invFilter==='open') rows=rows.filter(i=>i.t==='inv'&&i.open>0);
+  if(invFilter==='paid') rows=rows.filter(i=>i.t==='inv'&&i.open===0);
+  if(sel.value!=='all') rows=rows.filter(i=>(i.d||'').startsWith(sel.value));
+  const q=$('q').value.trim().toLowerCase(), qd=q.replace(/\D/g,'');
+  if(q) rows=rows.filter(i=>String(i.ref).toLowerCase().includes(q)||String(i.awb).toLowerCase().includes(q)||(qd.length>=4&&String(i.awb).replace(/\D/g,'').includes(qd)));
+  const tot=rows.reduce((a,i)=>a+(i.t==='inv'?i.open:0),0);
+  const lim=invLimit, shown=rows.slice(0,lim);
+  $('invTbl').innerHTML = rows.length ? invTable(shown,true,!$('invSup').value)+`<div class="toolbar" style="margin-top:6px"><span class="hint" style="margin:0">${rows.length} line${rows.length>1?'s':''} · ${money(tot)} open · tap a row to edit${rows.length>lim?` · showing ${lim}`:''}</span>${rows.length>lim?'<button class="small ghost" type="button" id="invMore">Show 300 more</button>':''}</div>` : '<div class="empty">No invoices match.</div>';
+  const mb=$('invMore'); if(mb) mb.onclick=()=>{ invLimit+=300; renderInvoices(); };
+}
+function renderPayments(){
+  let rows=[]; pickModels($('paySup').value).forEach(m=>rows.push(...m.pays));
+  rows.sort((a,b)=>a.d<b.d?1:-1);
+  const withSup=!$('paySup').value;
+  $('payTbl').innerHTML = rows.length ? `<table><thead><tr><th>Date</th>${withSup?'<th>Supplier</th>':''}<th class="num">Amount</th><th class="hide-sm">Method</th><th>Settles</th><th>Bank</th><th class="hide-sm">Sources</th><th class="hide-sm">Reference</th></tr></thead><tbody>`+
+    rows.map((p,ix)=>`<tr data-row="${esc(rowKeyOf(p))}" tabindex="0" style="--i:${Math.min(ix,26)}"><td>${dshow(p.d)}</td>${withSup?`<td class="wrap" style="min-width:120px">${esc(supName(p.sid))}</td>`:''}<td class="num">${money(p.amt)}</td><td class="hide-sm">${esc(p.method||'—')}</td><td class="wrap">${esc(p.cov?.text||'—')} ${p.cov?`<span class="pill ${p.cov.result}">${p.cov.result}</span>`:''}</td><td>${p.verified?'<span class="pill Verified">✓ Verified</span>':'<span class="pill Unverified">Not yet</span>'}</td><td class="hide-sm"><span class="src P${p.p?'':' off'}">P</span><span class="src K${p.k?'':' off'}">K</span><span class="src S${p.s?'':' off'}">S</span><span class="src B${p.b?'':' off'}">B</span></td><td class="hide-sm">${esc(p.ref)}</td></tr>`).join('')+`</tbody></table>`
+    : `<div class="empty">No payments yet. Use <b>+ Record payment</b> or drop proofs of payment on the P bay.</div>`;
+}
+let pendingImport=null;
+function renderReconcile(){
+  const sid=$('recSup').value, m=CM.models.find(x=>x.sid===sid);
+  if(!m){ $('tie').innerHTML=$('verif').innerHTML=$('bounds').innerHTML='<div class="empty">Pick a supplier.</div>'; }
+  else {
+    const over=state.suppliers[sid]?.farmBalance;
+    const farmC = over!=null ? C(over) : (m.hasS ? m.stmt : null);
+    let h=`<div class="kv"><span>Balance per this tracker (reconciled)</span><span class="big">${money(m.rec)}</span><label for="farmBal">Balance per farm statement${m.g.cutoff&&over==null?' ('+dshow(m.g.cutoff)+')':''}</label><span><input id="farmBal" inputmode="decimal" value="${farmC==null?'':(farmC/100).toFixed(2)}" placeholder="enter balance" style="width:140px;text-align:right"></span>`;
+    if(farmC!=null){ const diff=m.rec-farmC; h+=`<span>Difference</span><span class="big" style="color:${diff===0?'var(--ok)':'var(--bad)'}">${diff===0?'✓ ':''}${smoney(diff)}</span>`; }
+    if(m.g.kClosing!=null){ const kd=m.komet-m.g.kClosing; h+=`<span>Komet lines vs Komet report total (${dshow(m.g.kClosingDate)})</span><span class="big" style="color:${kd===0?'var(--ok)':'var(--bad)'}">${kd===0?'✓ ':''}${smoney(kd)}</span>`; }
+    h+=`</div><div class="hint">${over!=null?'Using the balance you typed. Clear the box to go back to the uploaded statement.':'Filled from the latest uploaded statement. Type a newer figure from the farm to compare against it.'} Any difference is explained line by line on 03 Three-way match.</div>`;
+    $('tie').innerHTML=h;
+    const vp=m.pays.filter(p=>p.verified), up=m.pays.filter(p=>!p.verified);
+    $('verif').innerHTML=`<div class="kv"><span>Bank-verified</span><span class="big">${vp.length} · ${money(vp.reduce((a,p)=>a+p.amt,0))}</span><span>Not yet verified</span><span class="big">${up.length} · ${money(up.reduce((a,p)=>a+p.amt,0))}</span></div><div class="hint">Open a payment on 05 Payments and tick "Matches a bank record" once you've confirmed it on your bank statement.</div>`;
+    const sp=m.pays.filter(p=>p.cov&&p.cov.result==='Splits').sort((a,b)=>a.d<b.d?-1:1);
+    $('bounds').innerHTML = sp.length ? `<div class="scroll"><table><thead><tr><th>Date</th><th class="num">Amount</th><th>Settles</th><th>Next exact?</th></tr></thead><tbody>`+
+      sp.map(p=>{ const all=m.pays.slice().sort((a,b)=>a.d<b.d?-1:1), nx=all[all.indexOf(p)+1]; return `<tr data-row="${esc(rowKeyOf(p))}" tabindex="0"><td>${dshow(p.d)}</td><td class="num">${money(p.amt)}</td><td class="wrap">${esc(p.cov.text)}</td><td>${nx?(nx.cov&&nx.cov.result==='Exact'?'<span class="pill Exact">Yes</span>':'<span class="pill Splits">No</span>'):'—'}</td></tr>`; }).join('')+
+      `</tbody></table></div><div class="hint">Payments normally clear whole invoices. When one doesn't, the farm applied it differently (a partial payment, a credit, or an invoice amount that differs). Confirm these with the farm.</div>`
+      : (m.pays.length ? '<div class="flag good">Every payment lands exactly on an invoice boundary.</div>' : '<div class="empty">No payments for this supplier yet.</div>');
+  }
+  const imp = pendingImport ? `<div class="flag bad" style="margin-top:10px">Backup file: ${Object.keys(pendingImport.suppliers).length} suppliers, ${Object.keys(pendingImport.docs).length} files. This will <b>replace</b> everything in the tracker.<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="danger small" id="impApply" type="button">Replace current data</button><button class="small" id="impCancel" type="button">Cancel</button></div></div>` : '';
+  $('backup').innerHTML=`<div class="toolbar"><button id="expJson" type="button">Download backup (JSON)</button><button id="expAll" type="button">Export all matches (CSV)</button><button id="impBtn" type="button">Restore from backup…</button><input id="impFile" type="file" accept="application/json,.json" hidden></div><div class="hint">A backup holds every supplier, document line, payment, verification mark and resolution note. Restoring replaces current data, and you can Undo.</div>${imp}`;
+  $('expJson').onclick=()=>save('bloomline_payables_backup_'+todayISO()+'.json', JSON.stringify(state,null,1));
+  $('expAll').onclick=()=>exportCSV(null);
+  $('impBtn').onclick=()=>$('impFile').click();
+  if(pendingImport){ $('impCancel').onclick=()=>{ pendingImport=null; renderReconcile(); }; $('impApply').onclick=()=>applyImport(); }
+}
+async function replaceAll(next){
+  for(const col of ['suppliers','docs','res']){
+    for(const id of Object.keys(state[col])) if(!(next[col]||{})[id]) await del(col,id);
+    for(const [id,v] of Object.entries(next[col]||{})) await put(col,id,v);
+  }
+}
+async function applyImport(){
+  const snap=JSON.parse(JSON.stringify(state)), next=pendingImport; pendingImport=null;
+  try{ await replaceAll(next); logAct('Restored from backup'); toast('Backup restored', async()=>{ await replaceAll(snap); toast('Restore undone'); }); }
+  catch(e){ toast('The restore did not finish. Try again.'); }
+  render();
+}
+document.addEventListener('change', ev=>{
+  if(ev.target.id==='farmBal'){ const sid=$('recSup').value; if(!sid||!state.suppliers[sid]) return; const v=ev.target.value.trim(); patch('suppliers', sid, {farmBalance: v===''?null:+(C(v)/100).toFixed(2)}).then(()=>toast(v===''?'Using the uploaded statement again':'Farm balance saved')); }
+  if(ev.target.id==='impFile'){
+    const f=ev.target.files[0]; if(!f) return;
+    f.text().then(t=>{ const j=JSON.parse(t); if(!j||typeof j.docs!=='object'||typeof j.suppliers!=='object') throw 0; pendingImport={suppliers:j.suppliers||{}, docs:j.docs||{}, res:j.res||{}}; switchTab('reconcile'); renderReconcile(); }).catch(()=>toast('That file is not a Bloomline backup'));
+  }
+});
+['chartSup','invSup','paySup','recSup'].forEach(id=>$(id).addEventListener('change',()=>render()));
+$('range').onchange=e=>{ chartRange=Number(e.target.value); renderChart(); goEnter($('t-overview')); };
+$('q').oninput=renderInvoices; $('yr').onchange=renderInvoices;
+document.querySelectorAll('[data-f]').forEach(b=>b.addEventListener('click',()=>{ invFilter=b.dataset.f; invSort=invFilter==='open'?'asc':'desc'; document.querySelectorAll('[data-f]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderInvoices(); }));
+$('expInv').onclick=()=>{ const rows=[]; pickModels($('invSup').value).forEach(m=>rows.push(...m.rows)); save('bloomline_invoices.csv', csv([['Supplier','Date','Type','Invoice','AWB','On statement','In Komet','Amount','Paid','Open','Status','Match']].concat(rows.map(i=>[supName(i.sid),i.d,TYPE_LABEL[i.t],i.ref,i.awb,i.s?'yes':'no',i.k?'yes':'no',(i.sign*i.amt/100).toFixed(2),(i.paid/100).toFixed(2),(i.t==='inv'?i.open/100:0).toFixed(2),i.status,i.lb])))); };
+$('expPay').onclick=()=>{ const rows=[]; pickModels($('paySup').value).forEach(m=>rows.push(...m.pays)); save('bloomline_payments.csv', csv([['Supplier','Date','Amount','Method','Reference','Bank verified','Proof','Komet','Statement','Settles','Result','Match']].concat(rows.map(p=>[supName(p.sid),p.d,(p.amt/100).toFixed(2),p.method,p.ref,p.verified?'yes':'no',p.p?'yes':'no',p.k?'yes':'no',p.s?'yes':'no',p.cov?.text||'',p.cov?.result||'',p.lb])))); };
+
+/* ================= export ================= */
+function csv(rows){ return rows.map(r=>r.map(v=>{ const s=String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(',')).join('\n'); }
+async function save(name, data){
+  if(!caps.downloads){ toast('Downloads are not available in this view.'); return; }
+  try{ await caps.downloads.save({filename:name, data}); toast('Saved '+name); }catch(e){ if(e&&e.code!=='cancelled'&&e.code!=='declined') toast('The download did not go through.'); }
+}
+function exportCSV(sid){
+  const out=[['Supplier','Kind','Type','Date','Reference','AWB','Statement','Komet','Proof','Difference','Status','Next step','Resolution note']];
+  CM.models.filter(m=>!sid||m.sid===sid).forEach(m=>{
+    m.rows.forEach(r=>out.push([supName(m.sid),'Invoice',TYPE_LABEL[r.t],r.d,r.ref,r.awb,r.s?(r.s.c/100).toFixed(2):'',r.k?(r.k.c/100).toFixed(2):'','',r.s&&r.k?((r.k.c-r.s.c)/100).toFixed(2):'',r.st==='res'?'Resolved ('+r.lb+')':r.lb,r.act,r.resolved?.note||'']));
+    m.pays.forEach(r=>out.push([supName(m.sid),'Payment','Payment',r.d,r.ref,'',r.s?(r.s.c/100).toFixed(2):'',r.k?(r.k.c/100).toFixed(2):'',r.p?(r.p.c/100).toFixed(2):'','',r.st==='res'?'Resolved ('+r.lb+')':r.lb,r.act,r.resolved?.note||'']));
+  });
+  save(sid?`match_${nname(supName(sid)).replace(/ /g,'_')||'supplier'}.csv`:'bloomline_matches.csv', csv(out));
+}
+
+/* ================= intake: extraction ================= */
+let reviews=[];
+let pdfReady=null, xlsxReady=null;
+function ensurePdf(){ if(!pdfReady) pdfReady=(async()=>{ await loadScript(PDFW); await loadScript(PDFJS); window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFW; })().catch(e=>{ pdfReady=null; throw e; }); return pdfReady; }
+function ensureXlsx(){ if(!xlsxReady) xlsxReady=loadScript(XLSXJS).catch(e=>{ xlsxReady=null; throw e; }); return xlsxReady; }
+const extOf = f => (f.name.split('.').pop()||'').toLowerCase();
+
+async function pdfExtract(buf, rv){
+  await ensurePdf();
+  const pdf = await pdfjsLib.getDocument({data:buf, isEvalSupported:false}).promise;
+  const out=[];
+  for(let n=1;n<=pdf.numPages;n++){
+    const page=await pdf.getPage(n); const tc=await page.getTextContent();
+    const rows=new Map();
+    tc.items.forEach(it=>{ if(!it.str||!it.str.trim()) return; const y=Math.round(it.transform[5]/3)*3; if(!rows.has(y)) rows.set(y,[]); rows.get(y).push({x:it.transform[4], s:it.str, w:it.width||0}); });
+    out.push(`--- page ${n} ---`);
+    [...rows.entries()].sort((a,b)=>b[0]-a[0]).forEach(([y,items])=>{ items.sort((a,b)=>a.x-b.x); let line='', lastX=null; items.forEach(i=>{ if(lastX!=null) line += (i.x-lastX>12)?' | ':' '; line+=i.s.trim(); lastX=i.x+i.w; }); out.push(line); });
+  }
+  const text=out.join('\n');
+  const chars=text.replace(/---.*---|\s|\|/g,'').length;
+  let images=[];
+  if(chars < 60*pdf.numPages){
+    rv.log('Little text found. Treating it as a scanned document and reading the page images.');
+    const max = caps.limits?.images?.maxCount || 0;
+    for(let n=1;n<=Math.min(pdf.numPages, max||0);n++){
+      const page=await pdf.getPage(n); const vp=page.getViewport({scale:1.8});
+      const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
+      await page.render({canvasContext:cv.getContext('2d'), viewport:vp}).promise;
+      images.push(await new Promise(r=>cv.toBlob(r,'image/jpeg',.82)));
+    }
+    if(pdf.numPages>max && max) rv.log(`Only the first ${max} pages can be read as images.`);
+  }
+  return {text: chars>=60*pdf.numPages?text:'', images, pages:pdf.numPages};
+}
+async function sheetExtract(file){
+  const e=extOf(file);
+  if(e==='csv'||e==='txt') return await file.text();
+  await ensureXlsx();
+  const wb=XLSX.read(await file.arrayBuffer(), {type:'array', cellDates:true});
+  return wb.SheetNames.map(n=>`--- sheet ${n} ---\n`+XLSX.utils.sheet_to_csv(wb.Sheets[n], {dateNF:'yyyy-mm-dd', blankrows:false})).join('\n');
+}
+
+const KIND_GUIDE = {
+  statement:`This is a SUPPLIER ACCOUNT STATEMENT that a flower farm or supplier sent to Tropical Blooms (the customer). List every invoice, credit note/memo and payment row it shows. "closing_balance" is the balance due/total owed shown on the statement (null if not shown). Skip subtotal, aging-bucket and page-total rows. If the statement has an opening/previous balance row, put it in a line with type "invoice", ref "OPENING", and the opening amount.`,
+  komet:`This is an export from KometSales, Tropical Blooms' ERP: vendor bills, purchases, AP aging or vendor payments. It may include many vendors; set "vendor" on every line from the vendor/farm/supplier column. For "ref" use the vendor's invoice number column when there is one (often "Vendor Invoice", "Invoice #", "Factura"), not Komet's internal PO or bill id; put the internal id in "note". Bills are "invoice", vendor credits are "credit", vendor payments are "payment".`,
+  bank:`This is a BANK STATEMENT or bank activity export of Tropical Blooms Inc. Extract ONLY outgoing payments (debits: wires, ACH, checks, Zelle) made to flower farms, freight agents or other suppliers. Skip deposits, card purchases, bank fees, payroll, taxes, loan payments and transfers between Tropical Blooms' own accounts. "vendor" is the payee/beneficiary as written. Every line has type "payment". "ref" is the bank reference, Fed/trace or check number. "date" is the posting date. doc_date is the statement end date.`,
+  payment:`This is a PROOF OF PAYMENT from Tropical Blooms to a supplier: a wire/ACH confirmation, check copy, Zelle or bank screenshot, or a remittance. Usually one payment. "vendor" is the beneficiary/payee. "ref" is the confirmation, Fed reference, trace or check number. Put invoice numbers mentioned in the memo/remittance in "applies_to". Date is the payment/value date. Ignore fees unless they are a separate payment to the supplier.`
+};
+function buildPrompt(kind, text, part, of, known){
+  return `You extract accounts-payable data for Tropical Blooms Inc, a flower importer in Miami that buys from farms in Colombia and Ecuador.
+${KIND_GUIDE[kind]}
+Known suppliers (reuse these exact names when the document refers to one of them): ${known.length?known.join('; '):'none yet'}.
+Rules:
+- Dates as YYYY-MM-DD. Latin American documents often write DD/MM/YYYY; US ones MM/DD/YYYY. Decide from the document (a day above 12, the country, other dates).
+- "amount" is always a positive number in dollars, no symbols. The sign comes from "type": invoice, credit, or payment.
+- Use the exact invoice/credit/payment number as printed for "ref". Put an air waybill number (11 digits, like 729-12345678) in "awb" when shown.
+- Only include rows really present in the text. Never invent rows or totals.
+${of>1?`- This is part ${part} of ${of} of one document. Extract only the rows in this part. Give supplier/doc_date/closing_balance only if they appear in this part.`:''}
+- "detected_type" is what this document really is: a supplier statement, a Komet export, a proof of payment, a bank statement, a single invoice, or other.
+Answer with ONLY a JSON object, no other text:
+{"detected_type": "statement"|"komet"|"payment"|"bank"|"invoice"|"other", "supplier": string|null, "doc_date": "YYYY-MM-DD"|null, "closing_balance": number|null, "lines": [{"vendor": string, "type": "invoice"|"credit"|"payment", "date": "YYYY-MM-DD", "ref": string, "awb": string, "amount": number, "applies_to": [string], "method": string, "note": string}]}
+
+DOCUMENT TEXT:
+${text}`;
+}
+function splitText(text, maxBytes){
+  const enc=new TextEncoder(); if(enc.encode(text).length<=maxBytes) return [text];
+  const lines=text.split('\n'), header=lines.slice(0,25).join('\n'), chunks=[]; let cur=[], size=0;
+  lines.forEach(l=>{ const b=enc.encode(l).length+1; if(size+b>maxBytes-enc.encode(header).length-200 && cur.length){ chunks.push(cur.join('\n')); cur=[]; size=0; } cur.push(l); size+=b; });
+  if(cur.length) chunks.push(cur.join('\n'));
+  return chunks.map((c,i)=>i===0?c:`[first lines of the document, for context only]\n${header}\n[continued rows]\n${c}`);
+}
+async function aiParse(rv, text, images){
+  const known=Object.values(state.suppliers).filter(s=>!s.example).map(s=>s.name);
+  const maxB=(caps.limits?.maxPromptBytes||65536)-6000;
+  const chunks = text ? splitText(text, maxB) : [''];
+  const merged={supplier:null, doc_date:null, closing_balance:null, lines:[]};
+  for(let i=0;i<chunks.length;i++){
+    if(rv.cancelled) throw {code:'cancelled'};
+    rv.ctrl=new AbortController();
+    rv.log(chunks.length>1?`Reading part ${i+1} of ${chunks.length}…`:'Reading with Claude… (usually 10–60 seconds)');
+    const prompt = buildPrompt(rv.kind, chunks[i] || '(No text layer. Read the attached page images.)', i+1, chunks.length, known);
+    const opts={signal:rv.ctrl.signal, modelTier:'default'};
+    if(images&&images.length&&i===0) opts.images=images;
+    const j = await caps.sample.json(prompt, opts);
+    if(!j||typeof j!=='object') throw {code:'bad_json', message:'Claude did not return the expected data.'};
+    merged.supplier = merged.supplier || j.supplier || null;
+    merged.detected = merged.detected || j.detected_type || null;
+    merged.doc_date = merged.doc_date || j.doc_date || null;
+    if(j.closing_balance!=null && !isNaN(parseFloat(j.closing_balance))) merged.closing_balance = j.closing_balance;
+    (Array.isArray(j.lines)?j.lines:[]).forEach(l=>merged.lines.push(l));
+  }
+  return merged;
+}
+function heuristicSheet(text){
+  const rows=text.split('\n').filter(l=>!/^--- sheet/.test(l)).map(parseCSVLine);
+  let hi=rows.findIndex(r=>r.some(c=>/amount|monto|total|valor|importe|debit|credit/i.test(c)) && r.some(c=>/date|fecha/i.test(c)));
+  if(hi<0) return [];
+  const H=rows[hi].map(h=>h.toLowerCase());
+  const col = re => H.findIndex(h=>re.test(h));
+  const cDate=col(/date|fecha/), cRef=col(/vendor inv|invoice|factura|inv ?#|ref|document|doc|number|n[uú]mero|check/), cAmt=col(/amount|monto|total|valor|importe|balance/), cVen=col(/vendor|supplier|proveedor|farm|finca|payee|beneficiar/), cType=col(/^type|tipo|transaction/), cAwb=col(/awb|guia|gu[ií]a/);
+  const cDeb=col(/debit|cargo/), cCred=col(/credit|abono/);
+  const out=[];
+  rows.slice(hi+1).forEach(r=>{
+    let a = cAmt>=0 ? parseFloat(String(r[cAmt]||'').replace(/[$,\s()]/g,'')) : NaN;
+    let type='invoice';
+    if(isNaN(a) && cDeb>=0){ const d=parseFloat(String(r[cDeb]||'').replace(/[$,\s]/g,'')), c=parseFloat(String(r[cCred]||'').replace(/[$,\s]/g,'')); if(!isNaN(d)&&d) a=d; else if(!isNaN(c)&&c){ a=c; type='payment'; } }
+    if(isNaN(a)||!a) return;
+    const tt=String(cType>=0?r[cType]:'').toLowerCase();
+    if(/pay|pago|abono/.test(tt)) type='payment'; else if(/cred|nota/.test(tt)) type='credit'; else if(a<0) type='credit';
+    out.push({vendor:cVen>=0?r[cVen]:'', type, date:toISO(r[cDate]), ref:cRef>=0?r[cRef]:'', awb:cAwb>=0?r[cAwb]:'', amount:Math.abs(a), applies_to:[], method:'', note:''});
+  });
+  return out;
+}
+function parseCSVLine(l){ const out=[]; let cur='', q=false; for(let i=0;i<l.length;i++){ const ch=l[i]; if(q){ if(ch==='"'&&l[i+1]==='"'){ cur+='"'; i++; } else if(ch==='"') q=false; else cur+=ch; } else if(ch==='"') q=true; else if(ch===','){ out.push(cur); cur=''; } else cur+=ch; } out.push(cur); return out.map(s=>s.trim()); }
+
+function matchSupplier(name){
+  const n=nname(name); if(!n) return '';
+  let best='', score=0;
+  for(const [id,s] of Object.entries(state.suppliers)){
+    for(const cand of [s.name,...(s.aliases||[])]){ const c=nname(cand); if(!c) continue; const sc = c===n?3 : (c.includes(n)||n.includes(c))?2 : 0; if(sc>score){ score=sc; best=id; } }
+  }
+  return best;
+}
+function normLine(l, fallbackVendor){
+  const t = /pay|pago|abono/i.test(l.type) ? 'pay' : /cred|nota/i.test(l.type) ? 'cr' : 'inv';
+  return {inc:true, vendor:String(l.vendor||fallbackVendor||'').trim(), t, d:toISO(l.date), r:String(l.ref||'').trim(), awb:String(l.awb||'').trim(), a:(C(l.amount)/100).toFixed(2), ap:Array.isArray(l.applies_to)?l.applies_to.map(String).filter(Boolean):[], m:String(l.method||'').trim(), n:String(l.note||'').trim()};
+}
+
+async function intake(files, kind){
+  if(!files||!files.length) return;
+  switchTab('intake');
+  for(const f of files){
+    const rv={id:newId('r'), kind, file:f, fileName:f.name, stage:'reading', logs:[], lines:[], vmap:{}, docDate:'', closing:'', hint:$('hintSup').value};
+    rv.log=(m)=>{ rv.logs.push('> '+m); renderReviews(); };
+    reviews.unshift(rv); renderReviews();
+    process(rv);
+  }
+}
+async function fileHash(f){ try{ const b=await crypto.subtle.digest('SHA-256', await f.arrayBuffer()); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }catch(e){ return ''; } }
+const KIND_OF_DETECTED={statement:'statement',komet:'komet',payment:'payment',bank:'bank'};
+async function process(rv){
+  const f=rv.file, e=extOf(f);
+  try{
+    rv.hash = await fileHash(f);
+    const same = rv.hash && Object.values(state.docs).find(d=>d.hash===rv.hash);
+    if(same){ rv.dupFile = same; rv.log(`This exact file was already saved on ${(same.uploadedAt||'').slice(0,10)} as "${same.fileName}". Every line is unticked; save only if you really mean to add it twice.`); }
+    let text='', images=[];
+    if(e==='pdf'||f.type==='application/pdf'){ rv.log('Opening PDF…'); const x=await pdfExtract(await f.arrayBuffer(), rv); text=x.text; images=x.images; rv.log(`${x.pages} page${x.pages===1?'':'s'} opened.`); }
+    else if(/^image\//.test(f.type)||['png','jpg','jpeg','webp','heic','gif'].includes(e)){ images=[f]; rv.log('Photo or screenshot: reading the image.'); }
+    else if(['csv','txt','xlsx','xls'].includes(e)){ rv.log('Spreadsheet: reading rows…'); text=await sheetExtract(f); }
+    else throw {message:'This file type can\'t be read. Use PDF, a photo, Excel or CSV.'};
+    let parsed=null;
+    if(caps.sample && (text || images.length)){
+      if(images.length && !caps.limits?.images){ if(!text) throw {message:'This view can\'t read images. Enter the lines by hand below, or upload a PDF with selectable text, a CSV or an Excel file.'}; images=[]; }
+      try{ parsed=await aiParse(rv, text, images); }
+      catch(err){
+        if(err&&err.code==='cancelled'){ rv.log('Stopped.'); }
+        else if(err&&err.code==='not_granted'){ caps.sample=null; rv.log('Reading with Claude was declined in this view.'); }
+        else rv.log('Claude could not read it: '+(err&&err.message||err&&err.code||'unknown error')+'.');
+      }
+    }
+    if(!parsed && text && ['csv','txt','xlsx','xls'].includes(e)){ const L=heuristicSheet(text); if(L.length){ parsed={lines:L}; rv.log(`Read ${L.length} rows from the column headers. Check the types below.`); } }
+    if(!parsed){ parsed={lines:[]}; rv.log('Add the lines by hand below, then save.'); }
+    const fallbackVendor = rv.hint ? supName(rv.hint) : (parsed.supplier||'');
+    rv.lines = (parsed.lines||[]).map(l=>normLine(l, fallbackVendor)).filter(l=>C(l.a)>0);
+    if(rv.kind==='payment'||rv.kind==='bank') rv.lines.forEach(l=>{ l.t='pay'; });
+    const det = KIND_OF_DETECTED[parsed.detected];
+    if(parsed.detected && parsed.detected!==rv.kind){ rv.wrongBay = det || parsed.detected; rv.log(`Heads up: this looks like ${det?'a '+KIND[det].label.toLowerCase():'a '+parsed.detected}, not a ${KIND[rv.kind].label.toLowerCase()}.`); }
+    if(rv.hint) rv.lines.forEach(l=>{ if(rv.kind!=='komet'||!l.vendor) l.vendor=supName(rv.hint); });
+    rv.docDate = toISO(parsed.doc_date) || rv.lines.reduce((m,l)=>l.d>m?l.d:m,'');
+    rv.closing = parsed.closing_balance!=null && parsed.closing_balance!=='' ? (C(parsed.closing_balance)/100).toFixed(2) : '';
+    rv.supplierGuess = parsed.supplier||'';
+    buildVmap(rv); markDups(rv);
+    if(rv.dupFile) rv.lines.forEach(l=>{ l.inc=false; });
+    rv.log(`${rv.lines.length} line${rv.lines.length===1?'':'s'} found. Check them, then save.`);
+    rv.stage='review';
+  }catch(err){
+    rv.log((err&&err.message)||'Could not read this file.'); rv.stage='review';
+    if(!rv.lines.length) rv.lines=[];
+    buildVmap(rv);
+  }
+  renderReviews(); renderHero();
+}
+function buildVmap(rv){
+  const names=[...new Set(rv.lines.map(l=>l.vendor||''))];
+  if(!names.length) names.push(rv.supplierGuess||'');
+  names.forEach(n=>{ if(rv.vmap[n]==null) rv.vmap[n] = rv.hint || matchSupplier(n) || (rv.kind==='bank' ? '' : (n?'new':'')); });
+  if(rv.kind==='bank') rv.lines.forEach(l=>{ if(!rv.vmap[l.vendor||'']) l.inc=false; });
+}
+function vendorSid(rv, l){ return rv.vmap[l.vendor||''] ?? ''; }
+function markDups(rv){
+  const code=KIND[rv.kind].code;
+  const cache={};
+  rv.lines.forEach(l=>{
+    const sid=vendorSid(rv,l); l.dup=false;
+    if(!sid||sid==='new') return;
+    if(!cache[sid]){ const g=gather(sid); cache[sid]=new Set(g[code].map(x=>x.t==='pay'?`pay|${x.d}|${x.c}`:`${x.t}|${nref(x.r)}|${x.c}`)); }
+    const k = l.t==='pay'?`pay|${l.d}|${C(l.a)}`:`${l.t}|${nref(l.r)}|${C(l.a)}`;
+    if(cache[sid].has(k)){ l.dup=true; l.inc=false; }
+  });
+}
+function renderReviews(){
+  const box=$('reviews'); if(!box) return;
+  if(!reviews.length){ box.innerHTML=`<div class="card"><div class="empty">Files you drop in are read here. You check every line before anything is saved, and each saved file keeps a link to the original.</div></div>`; $('aiNote').textContent = caps.sample ? 'PDFs, photos and spreadsheets are read by Claude using your Claude usage. You confirm before the first read.' : ''; return; }
+  $('aiNote').textContent = caps.sample ? 'PDFs, photos and spreadsheets are read by Claude using your Claude usage.' : '';
+  const focus=document.activeElement && box.contains(document.activeElement) ? document.activeElement.id : null;
+  const supOpts = (sel,bank)=>`<option value="">${bank?'Skip · not a supplier payment':'Choose supplier…'}</option>${Object.entries(state.suppliers).sort((a,b)=>a[1].name.localeCompare(b[1].name)).map(([id,s])=>`<option value="${esc(id)}" ${sel===id?'selected':''}>${esc(s.name)}</option>`).join('')}<option value="new" ${sel==='new'?'selected':''}>+ New supplier with this name</option>`;
+  box.innerHTML = reviews.map(rv=>{
+    const k=KIND[rv.kind];
+    const head=`<div class="rv-h"><div><span class="src ${k.code}">${k.code}</span> <span class="fn">${esc(rv.fileName)}</span><div class="muted" style="font-size:12px">${esc(k.label)}</div></div><div class="toolbar" style="margin:0">${rv.stage==='reading'?`<span class="thinking">Reading</span><button class="small ghost" type="button" data-stop="${rv.id}">Stop</button>`:''}${rv.stage==='review'?`<button class="small ghost" type="button" data-discard="${rv.id}">Discard</button><button class="small primary" type="button" data-commit="${rv.id}" id="sv-${rv.id}">${saveLabel(rv)}</button>`:''}${rv.stage==='saving'?'<span class="thinking">Saving</span>':''}</div></div>`;
+    const log=`<div class="log">${esc(rv.logs.join('\n'))}</div>`;
+    if(rv.stage!=='review') return `<div class="card rv">${head}${log}</div>`;
+    const vnames=Object.keys(rv.vmap);
+    const vmapH = `<div class="meta">${vnames.map((n,i)=>`<div class="f"><label for="vm-${rv.id}-${i}">${n?'Vendor “'+esc(n)+'”':'Supplier'}</label><select id="vm-${rv.id}-${i}" data-vm="${rv.id}" data-vname="${esc(n)}">${supOpts(rv.vmap[n], rv.kind==='bank')}</select></div>`).join('')}<div class="f"><label for="dd-${rv.id}">Document date</label><input id="dd-${rv.id}" type="date" data-rvf="${rv.id}" data-k="docDate" value="${esc(rv.docDate)}"></div>${rv.kind==='statement'||(rv.kind==='komet'&&vnames.length===1)?`<div class="f"><label for="cb-${rv.id}">${rv.kind==='statement'?'Statement balance due':'Komet report total for this vendor'}</label><input id="cb-${rv.id}" inputmode="decimal" data-rvf="${rv.id}" data-k="closing" value="${esc(rv.closing)}" placeholder="${rv.kind==='statement'?'from the statement':'optional · AP aging total'}"></div>`:''}</div>`;
+    const warnH = (rv.wrongBay && KIND[rv.wrongBay] ? `<div class="flag bad">This looks like a <b>${esc(KIND[rv.wrongBay].label.toLowerCase())}</b>, but it was dropped on the ${esc(k.label)} box. <button class="small" type="button" data-rv="${rv.id}" data-switchkind="${rv.wrongBay}">Treat it as ${esc(KIND[rv.wrongBay].label)}</button></div>` : rv.wrongBay ? `<div class="flag">This may not be a ${esc(k.label.toLowerCase())} (it looks like: ${esc(rv.wrongBay)}). Check before saving.</div>` : '')
+      + (rv.dupFile ? `<div class="flag bad">This exact file was already saved on ${esc((rv.dupFile.uploadedAt||'').slice(0,10))}. Every line is unticked.</div>` : '')
+      + (rv.kind==='bank' ? `<div class="flag info">Only payments mapped to a supplier are saved. Anything set to "Skip" (rent, payroll, fees) stays out of the ledger.</div>` : '');
+    const dupN=rv.lines.filter(l=>l.dup).length;
+    const lines=`<div class="scroll"><table><thead><tr><th>Use</th><th>Type</th><th>Date</th><th>Ref #</th><th class="num">Amount</th><th class="hide-sm">AWB</th>${vnames.length>1?'<th>Vendor</th>':''}<th class="hide-sm">Applies to</th><th></th></tr></thead><tbody>${rv.lines.map((l,i)=>`<tr class="${l.dup?'dup':''}"><td><input type="checkbox" id="u-${rv.id}-${i}" data-l="${rv.id}|${i}|inc" ${l.inc?'checked':''} aria-label="Use line"></td><td><select id="t-${rv.id}-${i}" data-l="${rv.id}|${i}|t" aria-label="Type"><option value="inv" ${l.t==='inv'?'selected':''}>Invoice</option><option value="cr" ${l.t==='cr'?'selected':''}>Credit</option><option value="pay" ${l.t==='pay'?'selected':''}>Payment</option></select></td><td><input type="date" id="d-${rv.id}-${i}" data-l="${rv.id}|${i}|d" value="${esc(l.d)}" aria-label="Date" style="min-width:130px"></td><td><input id="r-${rv.id}-${i}" data-l="${rv.id}|${i}|r" value="${esc(l.r)}" aria-label="Reference" style="min-width:90px"></td><td><input id="a-${rv.id}-${i}" data-l="${rv.id}|${i}|a" value="${esc(l.a)}" inputmode="decimal" aria-label="Amount" style="min-width:90px;text-align:right"></td><td class="hide-sm"><input id="w-${rv.id}-${i}" data-l="${rv.id}|${i}|awb" value="${esc(l.awb)}" aria-label="AWB" style="min-width:110px"></td>${vnames.length>1?`<td class="wrap" style="min-width:110px">${esc(l.vendor)}</td>`:''}<td class="hide-sm"><input id="p-${rv.id}-${i}" data-l="${rv.id}|${i}|ap" value="${esc(l.ap.join(', '))}" aria-label="Applies to invoices" style="min-width:90px"></td><td>${l.dup?'<span class="pill res" title="Already in the ledger from an earlier upload">dup</span>':''}</td></tr>`).join('')}</tbody></table></div>`;
+    const foot=`<div class="toolbar" style="margin:8px 0 0"><button class="small" type="button" data-addl="${rv.id}">+ Add line</button><span class="status" id="tot-${rv.id}">${totText(rv)}</span>${dupN?`<span class="status">${dupN} line${dupN===1?' was':'s were'} already saved from an earlier file and ${dupN===1?'is':'are'} unticked.</span>`:''}</div>`;
+    return `<div class="card rv">${head}${log}<div style="margin-top:10px">${warnH}${vmapH}${lines}${foot}</div></div>`;
+  }).join('');
+  if(focus){ const el=$(focus); if(el) el.focus(); }
+}
+function saveLabel(rv){ const n=rv.lines.filter(l=>l.inc).length; return `Save ${n} line${n===1?'':'s'}`; }
+function totText(rv){
+  const tot=rv.lines.filter(l=>l.inc).reduce((a,l)=>a+(l.t==='inv'?C(l.a):-C(l.a)),0);
+  const cb=rv.closing!==''&&rv.closing!=null ? C(rv.closing) : null;
+  return `Net of ticked lines: ${money(tot)}` + (cb!=null ? ` · ${rv.kind==='komet'?'Komet report says':'statement says'} ${money(cb)}${cb!==tot?' <span class="delta">(Δ '+smoney(tot-cb)+')</span>':' ✓'}` : '');
+}
+function refreshRvTotals(rv){ const t=$('tot-'+rv.id); if(t) t.innerHTML=totText(rv); const s=$('sv-'+rv.id); if(s) s.textContent=saveLabel(rv); }
+async function commit(rv){
+  const inc=rv.lines.filter(l=>l.inc);
+  if(!inc.length){ toast('Tick at least one line to save.'); return; }
+  const missing=inc.filter(l=>!vendorSid(rv,l));
+  if(missing.length){ toast(rv.kind==='bank'?'Map every ticked line to a supplier, or untick it.':'Choose a supplier for every vendor name first.'); return; }
+  if(rv.kind==='statement' && rv.closing!=='' && !rv.ackTie){
+    const net=inc.reduce((a,l)=>a+(l.t==='inv'?C(l.a):-C(l.a)),0), cb=C(rv.closing);
+    if(net!==cb){ rv.ackTie=true; toast(`Ticked lines total ${money(net)} but the statement says ${money(cb)} (Δ ${smoney(net-cb)}). A line may be missing or misread. Press Save again to save anyway.`); return; }
+  }
+  const bad=inc.filter(l=>!isISO(l.d)||C(l.a)<=0);
+  if(bad.length){ toast(`${bad.length} ticked line${bad.length===1?' needs':'s need'} a date and an amount.`); return; }
+  rv.stage='saving'; renderReviews();
+  try{
+    const sidOf={};
+    for(const n of Object.keys(rv.vmap)){
+      let sid=rv.vmap[n];
+      if(sid==='new'){ const name=(n||rv.supplierGuess||'New supplier').trim(); sid=slug(name); await put('suppliers', sid, {name, aliases:[], createdAt:new Date().toISOString()}); rv.vmap[n]=sid; }
+      else if(n && sid && state.suppliers[sid] && nname(n)!==nname(state.suppliers[sid].name) && !(state.suppliers[sid].aliases||[]).includes(n)){ await patch('suppliers', sid, {aliases:[...(state.suppliers[sid].aliases||[]), n]}); }
+      sidOf[n]=sid;
+    }
+    let assetId=null;
+    if(caps.assets && rv.file){
+      const e=extOf(rv.file); const type = rv.file.type==='application/pdf'||e==='pdf' ? 'application/pdf' : e==='csv' ? 'text/csv' : e==='txt' ? 'text/plain' : /^image\//.test(rv.file.type) ? rv.file.type : null;
+      if(type){ try{ const up=await caps.assets.upload(rv.file, {type}); assetId=up.id; }catch(err){ rv.logs.push('> The original file could not be stored ('+(err&&err.code||'error')+'); the lines are still saved.'); } }
+    }
+    const lines=inc.map(l=>({s:sidOf[l.vendor||'']||rv.vmap[l.vendor||''], t:l.t, d:l.d, r:l.r, awb:l.awb, a:+(C(l.a)/100).toFixed(2), ap:l.ap, m:l.m, n:l.n}));
+    const sids=[...new Set(lines.map(l=>l.s))];
+    const closing={}; if((rv.kind==='statement'||rv.kind==='komet') && rv.closing!=='' && sids.length===1) closing[sids[0]] = +(C(rv.closing)/100).toFixed(2);
+    const base={kind:rv.kind, fileName:rv.fileName, assetId, docDate:rv.docDate||'', closing, uploadedAt:new Date().toISOString(), hash:rv.hash||''};
+    const id=newId('d');
+    for(let i=0;i<lines.length;i+=800){ await put('docs', i?`${id}-p${i/800+1}`:id, Object.assign({}, base, {lines:lines.slice(i,i+800), part:i/800+1, batch:id})); }
+    reviews=reviews.filter(r=>r!==rv);
+    curSup=sids[0]||curSup;
+    toast(`Saved ${lines.length} line${lines.length===1?'':'s'} from ${rv.fileName}.`);
+    logAct(`Uploaded ${KIND[rv.kind].label.toLowerCase()} "${rv.fileName}" · ${lines.length} lines · ${sids.map(supName).join(', ')}`);
+    render();
+  }catch(err){ rv.stage='review'; rv.log('Save failed: '+(err&&err.code||err&&err.message||'error')+'. Nothing was lost; try Save again.'); }
+}
+
+/* ================= dialogs ================= */
+const dlg=$('dlg'), frm=$('frm');
+function openDlg(html, onSubmit){
+  frm.innerHTML=html; dlg.showModal();
+  frm.onsubmit=async ev=>{ ev.preventDefault(); const sub=ev.submitter; if(sub&&sub.value==='cancel'){ dlg.close(); return; } try{ const r=await onSubmit(sub&&sub.value); if(r!==false) dlg.close(); }catch(e){ toast('That did not save. Try again.'); } };
+}
+function supOptions(sel){ return Object.entries(state.suppliers).sort((a,b)=>a[1].name.localeCompare(b[1].name)).map(([id,s])=>`<option value="${esc(id)}" ${id===sel?'selected':''}>${esc(s.name)}</option>`).join(''); }
+const METHODS=['Wire transfer','ACH','Check','Zelle','Card','Other','Not specified'];
+function lineForm(l, withSource, kind){
+  const isPay=l.t==='pay';
+  return `${withSource?`<div class="f"><label for="ml-k">Source</label><select id="ml-k"><option value="payment" ${kind==='payment'?'selected':''}>Proof of payment (P)</option><option value="komet" ${kind==='komet'?'selected':''}>KometSales (K)</option><option value="statement" ${kind==='statement'?'selected':''}>Supplier statement (S)</option></select></div>`:''}
+  <div class="f"><label for="ml-s">Supplier</label><select id="ml-s">${supOptions(l.s||curSup)}<option value="__new">+ New supplier…</option></select><input id="ml-sn" placeholder="New supplier name" hidden style="margin-top:6px"></div>
+  <div class="f"><label for="ml-a">Amount (USD)</label><div style="display:flex;gap:8px"><input id="ml-a" inputmode="decimal" value="${l.a!=null&&l.a!==''?esc((+l.a).toFixed(2)):''}" required placeholder="0.00"><button type="button" class="small" id="ml-full" style="white-space:nowrap" ${isPay?'':'hidden'}>Pay full balance</button></div></div>
+  <div class="preview" id="ml-prev" aria-live="polite" ${isPay?'':'hidden'}></div>
+  <div class="row2"><div class="f"><label for="ml-t">Type</label><select id="ml-t"><option value="inv" ${l.t==='inv'?'selected':''}>Invoice</option><option value="cr" ${l.t==='cr'?'selected':''}>Credit</option><option value="pay" ${isPay?'selected':''}>Payment</option></select></div><div class="f"><label for="ml-d">Date</label><input id="ml-d" type="date" value="${esc(l.d||todayISO())}" required></div></div>
+  <div class="row2"><div class="f"><label for="ml-r" id="ml-rl">${isPay?'Bank reference (TRN / confirmation)':'Invoice / credit #'}</label><input id="ml-r" value="${esc(l.r||'')}"></div><div class="f" id="ml-mw" ${isPay?'':'hidden'}><label for="ml-m">Method</label><select id="ml-m">${METHODS.map(m=>`<option ${((l.m||'Wire transfer')===m)?'selected':''}>${m}</option>`).join('')}</select></div><div class="f" id="ml-ww" ${isPay?'hidden':''}><label for="ml-w">AWB / booking</label><input id="ml-w" value="${esc(l.awb||'')}" placeholder="729-12345678"></div></div>
+  <div class="f"><label for="ml-p">${isPay?'Applies to invoices':'Applies to (credits)'}</label><input id="ml-p" value="${esc((l.ap||[]).join(', '))}" placeholder="e.g. 10421, 10455 — blank means oldest first"></div>
+  <div class="f" id="ml-vw" ${isPay?'':'hidden'}><label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px;text-transform:none;letter-spacing:0"><input type="checkbox" id="ml-v" ${l.v?'checked':''}> Matches a bank record</label></div>
+  <div class="f"><label for="ml-n">Note</label><input id="ml-n" value="${esc(l.n||'')}"></div><div id="ml-warn"></div>`;
+}
+function wireLineForm(editAmt){
+  wireNewSup();
+  const t=$('ml-t'), upd=()=>{ const pay=t.value==='pay'; $('ml-full').hidden=!pay; $('ml-prev').hidden=!pay; $('ml-mw').hidden=!pay; $('ml-vw').hidden=!pay; $('ml-ww').hidden=pay; $('ml-rl').textContent=pay?'Bank reference (TRN / confirmation)':'Invoice / credit #'; preview(); };
+  const preview=()=>{
+    const p=$('ml-prev'); if(p.hidden) return; p.classList.remove('warnbox');
+    const m=CM.models.find(x=>x.sid===$('ml-s').value);
+    if(!m){ p.textContent='Pick a supplier to see what this payment settles.'; return; }
+    const before=m.rec+(editAmt||0), a=C($('ml-a').value||0);
+    if(!(a>0)){ p.textContent=`Balance before this payment: ${money(before)}. Enter an amount to see which invoices it clears.`; return; }
+    const open=m.open.map(i=>({ref:i.ref,open:i.open})); const refs=$('ml-p').value.split(/[,;]/).map(x=>nref(x)).filter(Boolean);
+    let left=a; const full=[], part=[];
+    const take=i=>{ if(left<=0||i.open<=0) return; const x=Math.min(left,i.open); i.open-=x; left-=x; (i.open===0?full:part).push([i.ref,x]); };
+    if(!editAmt){ refs.forEach(r=>{ const i=open.find(o=>nref(o.ref)===r); if(i) take(i); }); open.forEach(take); }
+    const parts=[]; if(full.length) parts.push(`${full.length} invoice${full.length>1?'s':''} (${full[0][0]===full[full.length-1][0]?'#'+full[0][0]:'#'+full[0][0]+' – #'+full[full.length-1][0]})`);
+    part.forEach(([r,x])=>parts.push(`${money(x)} of #${r}`));
+    const after=before-a;
+    p.innerHTML = (editAmt?'':`Settles: <b>${esc(parts.join(' + ')||'no open invoices')}</b><br>`) + `Balance after: <b>${after<0?money(-after)+' credit':money(after)}</b>`;
+    if(after<0||part.length) p.classList.add('warnbox');
+  };
+  t.onchange=upd; $('ml-a').oninput=preview; $('ml-s').addEventListener('change',preview); $('ml-p').oninput=preview;
+  $('ml-full').onclick=()=>{ const m=CM.models.find(x=>x.sid===$('ml-s').value); if(!m) return; $('ml-a').value=(Math.max(0,m.rec+(editAmt||0))/100).toFixed(2); preview(); $('ml-a').focus(); };
+  upd();
+}
+function wireNewSup(){ const s=$('ml-s'), n=$('ml-sn'); const upd=()=>{ n.hidden = s.value!=='__new'; }; s.addEventListener('change',upd); upd(); }
+async function readLineForm(){
+  let s=$('ml-s').value;
+  const d=$('ml-d').value, a=C($('ml-a').value);
+  if(s==='__new' && !$('ml-sn').value.trim()){ toast('Type the new supplier name.'); return null; }
+  if(!s){ toast('Pick a supplier.'); return null; }
+  if(!isISO(d)||a<=0){ toast('A line needs a date and an amount above zero.'); return null; }
+  if(s==='__new'){ const name=$('ml-sn').value.trim(); s=slug(name); await put('suppliers', s, {name, aliases:[], createdAt:new Date().toISOString()}); }
+  const t=$('ml-t').value;
+  return {s, t, d, r:$('ml-r').value.trim(), awb:t==='pay'?'':$('ml-w').value.trim(), a:a/100, ap:$('ml-p').value.split(/[,;]/).map(x=>x.trim()).filter(Boolean), m:t==='pay'?$('ml-m').value:'', n:$('ml-n').value.trim(), ...(t==='pay'?{v:$('ml-v').checked}:{})};
+}
+function entryWarnings(kind, skipDoc, skipIx){
+  const w=[], t=$('ml-t').value, s=$('ml-s').value, r=nref($('ml-r').value), awb=t==='pay'?'':$('ml-w').value.trim(), d=$('ml-d').value;
+  if(t!=='pay' && r && s!=='__new'){ const hit=Object.entries(state.docs).some(([id,doc])=>doc.kind===kind && (doc.lines||[]).some((l,ix)=>!(id===skipDoc&&ix===skipIx) && l.s===s && l.t===t && nref(l.r)===r)); if(hit) w.push(`${TYPE_LABEL[t]} #${esc($('ml-r').value.trim())} already exists for this supplier in ${esc(KIND[kind].label)}.`); }
+  if(awb && !/^\d{3}[- ]?\d{8}$/.test(awb)) w.push('AWB is not in the usual 3 + 8 digit format (729-12345678).');
+  if(d>todayISO()) w.push('The date is in the future.');
+  return w;
+}
+function armDelete(btn, onDel){
+  btn.onclick=()=>{ if(btn.dataset.arm!=='1'){ btn.dataset.arm='1'; btn.textContent='Tap again to delete'; setTimeout(()=>{ if(btn.isConnected){ btn.dataset.arm='0'; btn.textContent='Delete'; } },4000); return; } onDel(); };
+}
+function openEntry(t){
+  const kind = t==='pay' ? 'payment' : 'komet';
+  let ack=false;
+  openDlg(`<h2 id="dlgTitle">${t==='pay'?'Record payment':'Add invoice'}</h2>${lineForm({t},true,kind)}<div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">${t==='pay'?'Record payment':'Add invoice'}</button></div>`, async v=>{
+    const k=$('ml-k').value, warns=entryWarnings(k);
+    if(warns.length && !ack){ ack=true; $('ml-warn').innerHTML=`<div class="flag" style="margin-top:8px">${warns.join('<br>')}<br>Press save again to keep it as entered.</div>`; return false; }
+    const l=await readLineForm(); if(!l) return false;
+    await put('docs', newId('d'), {kind:k, manual:true, fileName:'Manual entry', assetId:null, docDate:l.d, closing:{}, uploadedAt:new Date().toISOString(), lines:[l], part:1});
+    curSup=l.s; toast(l.t==='pay'?'Payment recorded':'Invoice added'); logAct(`${l.t==='pay'?'Recorded payment':'Added '+TYPE_LABEL[l.t].toLowerCase()} ${l.r?'#'+l.r+' ':''}${money(C(l.a))} · ${supName(l.s)} · ${KIND[k].label}`);
+  });
+  wireLineForm(0);
+}
+function manualLine(){ openEntry('inv'); }
+function editLine(docId, ix){
+  const d=state.docs[docId]; if(!d||!d.lines||!d.lines[ix]) return;
+  const l=d.lines[ix]; let ack=false;
+  openDlg(`<h2 id="dlgTitle">Edit ${TYPE_LABEL[l.t].toLowerCase()} · ${esc(KIND[d.kind]?.label||'')}</h2><p class="hint" style="margin-top:0">From ${esc(d.fileName||'manual entry')}${d.assetId?` · <a href="/_blob/${esc(d.assetId)}" target="_blank" rel="noopener">open original</a>`:''}</p>${lineForm(l,false,d.kind)}<div class="dlg-f"><button class="danger" value="delete" type="button" id="ml-del">Delete</button><span style="flex:1"></span><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Save</button></div>`, async v=>{
+    const warns=entryWarnings(d.kind, docId, ix);
+    if(warns.length && !ack){ ack=true; $('ml-warn').innerHTML=`<div class="flag" style="margin-top:8px">${warns.join('<br>')}<br>Press Save again to keep it as entered.</div>`; return false; }
+    const nl=await readLineForm(); if(!nl) return false;
+    const lines=[...d.lines]; lines[ix]=nl; await patch('docs', docId, {lines}); toast('Changes saved'); logAct(`Edited ${TYPE_LABEL[l.t].toLowerCase()} ${l.r?'#'+l.r:''} ${money(C(l.a))} → ${money(C(nl.a))} · ${supName(nl.s)}`);
+  });
+  wireLineForm(l.t==='pay'?C(l.a):0);
+  armDelete($('ml-del'), async()=>{
+    const snap=JSON.parse(JSON.stringify(d)); dlg.close();
+    const lines=[...d.lines]; lines.splice(ix,1);
+    if(!lines.length) await del('docs', docId); else await patch('docs', docId, {lines});
+    logAct(`Deleted ${TYPE_LABEL[l.t].toLowerCase()} ${l.r?'#'+l.r:''} ${money(C(l.a))} · ${supName(l.s)}`);
+    toast(`${TYPE_LABEL[l.t]} deleted`, async()=>{ await put('docs', docId, snap); toast('Restored'); });
+  });
+}
+function resolveDlg(resId, lb){
+  openDlg(`<h2 id="dlgTitle">Resolve · ${esc(lb)}</h2><p class="hint" style="margin-top:0">Mark this as explained. It stops counting as an exception but stays visible under All and Matched.</p><div class="f"><label for="rs-r">Reason</label><select id="rs-r"><option value="">Choose a reason…</option>${RES_REASONS.map(r=>`<option>${esc(r)}</option>`).join('')}</select></div><div class="f"><label for="rs-n">Evidence or note</label><input id="rs-n" placeholder="e.g. Farm confirmed credit CM-90 on next statement" required></div><div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Resolve</button></div>`, async ()=>{
+    const reason=$('rs-r').value, note=$('rs-n').value.trim();
+    if(!reason){ toast('Pick a reason.'); return false; }
+    if(!note){ toast('Add a short note or document reference so the next person knows why.'); return false; }
+    await put('res', resId, {note:reason+' · '+note, reason, at:new Date().toISOString()}); logAct(`Resolved "${lb}" · ${reason} · ${note}`); toast('Marked resolved.');
+  });
+}
+function renameDlg(id){
+  const s=state.suppliers[id];
+  openDlg(`<h2 id="dlgTitle">Rename supplier</h2><div class="f"><label for="rn-n">Name</label><input id="rn-n" value="${esc(s.name)}" required></div><div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Save</button></div>`, async ()=>{
+    const name=$('rn-n').value.trim(); if(!name) return false;
+    const aliases=[...new Set([...(s.aliases||[]), s.name])].filter(a=>a!==name);
+    await patch('suppliers', id, {name, aliases}); toast('Renamed.');
+  });
+}
+function mergeDlg(id){
+  const s=state.suppliers[id];
+  const others=Object.entries(state.suppliers).filter(([k])=>k!==id).sort((a,b)=>a[1].name.localeCompare(b[1].name));
+  if(!others.length){ toast('There is no other supplier to merge into.'); return; }
+  openDlg(`<h2 id="dlgTitle">Merge “${esc(s.name)}”</h2><div class="f"><label for="mg-t">Into</label><select id="mg-t">${others.map(([k,o])=>`<option value="${esc(k)}">${esc(o.name)}</option>`).join('')}</select></div><p class="hint">Every line now under “${esc(s.name)}” moves to the supplier you pick, and “${esc(s.name)}” is kept as an alternate name so future uploads land in the right place.</p><div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Merge</button></div>`, async ()=>{
+    const to=$('mg-t').value;
+    for(const [did,d] of Object.entries(state.docs)){
+      if(!(d.lines||[]).some(l=>l.s===id)) continue;
+      const lines=d.lines.map(l=>l.s===id?Object.assign({},l,{s:to}):l);
+      const closing=Object.assign({}, d.closing||{}); if(closing[id]!=null){ closing[to]=closing[id]; delete closing[id]; }
+      await patch('docs', did, {lines, closing});
+    }
+    const t=state.suppliers[to];
+    await patch('suppliers', to, {aliases:[...new Set([...(t.aliases||[]), s.name, ...(s.aliases||[])])]});
+    await del('suppliers', id);
+    curSup=to; toast('Merged.'); logAct(`Merged ${s.name} into ${t.name}`);
+  });
+}
+function deleteDocDlg(id){
+  const d=state.docs[id];
+  openDlg(`<h2 id="dlgTitle">Delete this file?</h2><p>${esc(d.fileName||'Manual entry')} and its ${(d.lines||[]).length} line${(d.lines||[]).length===1?'':'s'} will be removed from the ledger. This can't be undone.</p><div class="dlg-f"><button value="cancel" type="submit">Keep it</button><button class="danger" value="ok" type="submit">Delete</button></div>`, async ()=>{
+    const snap=JSON.parse(JSON.stringify(d));
+    logAct(`Deleted file "${d.fileName||'Manual entry'}" (${(d.lines||[]).length} lines)`);
+    await del('docs', id); toast('File deleted.', async()=>{ await put('docs', id, snap); toast('File restored'); });
+  });
+}
+function clearExamplesDlg(){
+  openDlg(`<h2 id="dlgTitle">Remove example data?</h2><p>This deletes Example Farm and its sample statement, Komet and payment files. Your own uploads are untouched.</p><div class="dlg-f"><button value="cancel" type="submit">Keep</button><button class="danger" value="ok" type="submit">Remove examples</button></div>`, async ()=>{
+    for(const [id,d] of Object.entries(state.docs)) if(d.example) await del('docs', id);
+    for(const [id,s] of Object.entries(state.suppliers)) if(s.example) await del('suppliers', id);
+    for(const [id] of Object.entries(state.res)) if(id.startsWith('ex-')) await del('res', id);
+    curSup=''; toast('Example data removed.');
+  });
+}
+
+/* ================= events ================= */
+function switchTab(name){
+  curTab=name;
+  document.querySelectorAll('.tab').forEach(t=>{ const on=t.dataset.tab===name; t.setAttribute('aria-selected',on); t.tabIndex=on?0:-1; });
+  document.querySelectorAll('section[role=tabpanel]').forEach(s=>{ s.hidden = s.id!=='t-'+name; });
+  if(CM) (TAB_RENDER[name]||(()=>{}))();
+  goEnter($('t-'+name));
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchTab(t.dataset.tab)));
+$('btnUp').onclick=()=>switchTab('intake');
+$('btnPay').onclick=()=>openEntry('pay'); $('btnInv').onclick=()=>openEntry('inv');
+$('supSel').onchange=e=>{ curSup=e.target.value; renderMatch(); };
+document.querySelectorAll('[data-mf]').forEach(b=>b.addEventListener('click',()=>{ mFilter=b.dataset.mf; document.querySelectorAll('[data-mf]').forEach(x=>x.setAttribute('aria-pressed', x===b)); renderMatch(); }));
+$('expMatch').onclick=()=>curSup&&exportCSV(curSup);
+['statement','komet','payment','bank'].forEach(k=>{
+  const bay=$('bay-'+k), inp=$('in-'+k);
+  inp.addEventListener('change',()=>{ intake([...inp.files], k); inp.value=''; });
+  bay.addEventListener('dragover',e=>{ e.preventDefault(); bay.classList.add('over'); });
+  bay.addEventListener('dragleave',()=>bay.classList.remove('over'));
+  bay.addEventListener('drop',e=>{ e.preventDefault(); bay.classList.remove('over'); intake([...e.dataTransfer.files], k); });
+});
+document.addEventListener('click',e=>{
+  const th=e.target.closest('th[data-sort]'); if(th){ invSort=invSort==='asc'?'desc':'asc'; renderInvoices(); return; }
+  const t=e.target.closest('button,a,tr[data-go],tr[data-row]'); if(!t) return;
+  const ds=t.dataset;
+  if(t.matches('tr[data-go]')){ curSup=ds.go; switchTab('match'); render(); return; }
+  if(t.matches('tr[data-row]')){ const [d,ix]=(ds.row||'').split('|'); if(d) editLine(d,+ix); return; }
+  if(ds.edit){ e.preventDefault(); const [d,ix]=ds.edit.split('|'); editLine(d,+ix); return; }
+  if(ds.res){ resolveDlg(ds.res, ds.lb); return; }
+  if(ds.unres){ del('res', ds.unres).then(()=>{ toast('Reopened.'); logAct('Reopened a resolved item'); }); return; }
+  if(ds.act==='clear-ex'){ clearExamplesDlg(); return; }
+  if(ds.deldoc){ deleteDocDlg(ds.deldoc); return; }
+  if(ds.rename){ renameDlg(ds.rename); return; }
+  if(ds.settings){ settingsDlg(ds.settings); return; }
+  if(ds.goinbox){ e.preventDefault(); switchTab('intake'); return; }
+  if(ds.inboxdone){ patch('inbox', ds.inboxdone, {status:'loaded', doneAt:new Date().toISOString()}).then(()=>{ logAct('Marked an emailed statement as loaded'); renderInbox(); renderFresh(); }); return; }
+  if(ds.inboxdismiss){ patch('inbox', ds.inboxdismiss, {status:'dismissed', doneAt:new Date().toISOString()}).then(()=>{ logAct('Dismissed an emailed statement'); renderInbox(); renderFresh(); }); return; }
+  if(t.id==='btnAddSup'){ addSupplierDlg(); return; }
+  if(ds.merge){ mergeDlg(ds.merge); return; }
+  const rv=reviews.find(r=>r.id===(ds.stop||ds.discard||ds.commit||ds.addl||ds.rv));
+  if(rv){
+    if(ds.stop){ rv.cancelled=true; rv.ctrl&&rv.ctrl.abort(); }
+    else if(ds.discard){ rv.cancelled=true; reviews=reviews.filter(r=>r!==rv); renderReviews(); renderHero(); }
+    else if(ds.commit){ commit(rv); }
+    else if(ds.switchkind){ rv.kind=ds.switchkind; rv.wrongBay=null; if(rv.kind==='payment'||rv.kind==='bank') rv.lines.forEach(l=>{ l.t='pay'; }); rv.vmap={}; buildVmap(rv); markDups(rv); rv.log('Moved to '+KIND[rv.kind].label+'.'); renderReviews(); }
+    else if(ds.addl){ const vn=Object.keys(rv.vmap)[0]||''; rv.lines.push({inc:true, vendor:vn, t:rv.kind==='payment'?'pay':'inv', d:rv.docDate||todayISO(), r:'', awb:'', a:'', ap:[], m:'', n:''}); renderReviews(); }
+  }
+});
+document.addEventListener('keydown',e=>{
+  if((e.key==='Enter'||e.key===' ') && e.target.matches && e.target.matches('tr[data-go]')){ e.preventDefault(); curSup=e.target.dataset.go; switchTab('match'); render(); return; }
+  if((e.key==='Enter'||e.key===' ') && e.target.matches && e.target.matches('tr[data-row]')){ e.preventDefault(); const [d,ix]=(e.target.dataset.row||'').split('|'); if(d) editLine(d,+ix); return; }
+  const tab=e.target.closest&&e.target.closest('.tab');
+  if(tab&&['ArrowRight','ArrowLeft','Home','End'].includes(e.key)){ const tabs=[...document.querySelectorAll('.tab')]; let k=tabs.indexOf(tab); k = e.key==='Home'?0 : e.key==='End'?tabs.length-1 : (k+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length; e.preventDefault(); switchTab(tabs[k].dataset.tab); tabs[k].focus(); }
+});
+$('reviews').addEventListener('change',e=>{
+  const el=e.target, ds=el.dataset;
+  if(ds.l){ const [id,i,f]=ds.l.split('|'); const rv=reviews.find(r=>r.id===id); if(!rv) return; const l=rv.lines[+i];
+    if(f==='inc') l.inc=el.checked; else if(f==='ap') l.ap=el.value.split(/[,;]/).map(x=>x.trim()).filter(Boolean); else l[f]=el.value;
+    refreshRvTotals(rv); }
+  else if(ds.vm){ const rv=reviews.find(r=>r.id===ds.vm); if(!rv) return; rv.vmap[ds.vname]=el.value; if(rv.kind==='bank') rv.lines.forEach(l=>{ if((l.vendor||'')===ds.vname) l.inc=!!el.value; }); markDups(rv); renderReviews(); }
+  else if(ds.rvf){ const rv=reviews.find(r=>r.id===ds.rvf); if(!rv) return; rv[ds.k]=el.value; refreshRvTotals(rv); }
+});
+
+/* ================= immersive layer (from Bloom-Line) ================= */
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let fxOn = !RM;
+try{ if(localStorage.getItem('bloomline-ap-fx')==='off') fxOn=false; }catch(e){}
+function anim(){ return fxOn && !RM && !document.hidden; }
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+function goEnter(sec){ if(!sec||!anim()) return; sec.classList.remove('go'); void sec.offsetWidth; sec.classList.add('go'); clearTimeout(sec._go); sec._go=setTimeout(()=>sec.classList.remove('go'),2200); }
+const bg = (function(){
+  const cv=$('bg'), ctx=cv.getContext('2d'); let W=0,H=0,raf=0,last=0,px=0,py=0,tx=0,ty=0; const P=[];
+  const mobile=innerWidth<700;
+  const sprite=rgb=>{ const s=document.createElement('canvas'); s.width=s.height=32; const c=s.getContext('2d'); const g=c.createRadialGradient(16,16,0,16,16,16); g.addColorStop(0,`rgba(${rgb},1)`); g.addColorStop(.35,`rgba(${rgb},.35)`); g.addColorStop(1,`rgba(${rgb},0)`); c.fillStyle=g; c.fillRect(0,0,32,32); return s; };
+  const spr=[sprite('255,162,74'),sprite('125,220,106')];
+  function size(){ const dpr=Math.min(window.devicePixelRatio||1,2); W=innerWidth; H=innerHeight; cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); ctx.setTransform(dpr,0,0,dpr,0,0); }
+  function seed(){ P.length=0; const n=mobile?30:56; for(let i=0;i<n;i++) P.push({x:Math.random()*W,y:Math.random()*H,z:.3+Math.random()*.7,s:6+Math.random()*16,sp:6+Math.random()*16,ph:Math.random()*6.28,a:.25+Math.random()*.5,c:Math.random()<.72?0:1}); }
+  function draw(dt,t){ ctx.clearRect(0,0,W,H); px+=(tx-px)*.05; py+=(ty-py)*.05;
+    for(const p of P){ p.y-=p.sp*p.z*dt; p.x+=Math.sin(t*.0006+p.ph)*8*dt; if(p.y<-20){ p.y=H+20; p.x=Math.random()*W; } const s=p.s*p.z*1.6; ctx.globalAlpha=p.a*(.6+.4*Math.sin(t*.001+p.ph)); ctx.drawImage(spr[p.c],p.x+px*p.z*18-s/2,p.y+py*p.z*18-s/2,s,s); }
+    ctx.globalAlpha=1; }
+  function frame(t){ raf=0; if(!anim()||dlg.open) return; if(mobile && t-last<33){ raf=requestAnimationFrame(frame); return; } const dt=Math.min(.05,(t-last)/1000||.016); last=t; draw(dt,t); raf=requestAnimationFrame(frame); }
+  return { start(){ if(!W){ size(); seed(); } if(anim()){ if(!raf) raf=requestAnimationFrame(frame); } else draw(0,0); }, stop(){ cancelAnimationFrame(raf); raf=0; ctx.clearRect(0,0,W,H); }, resize(){ size(); seed(); this.start(); }, point(x,y){ tx=(x/(W||1)-.5)*2; ty=(y/(H||1)-.5)*2; } };
+})();
+let booting=false, skipBoot=false;
+async function runBoot(){
+  if(booting) return; booting=true; const b=$('boot'); $('bootPrompt').style.visibility='hidden';
+  const {T,models}=CM; const nd=Object.values(state.docs); const cnt=k=>nd.filter(d=>d.kind===k).length;
+  const lines=[`> LINK ............ ${mode==='db'?'LIVE':mode==='local'?'LOCAL':'…'}`,`> SUPPLIERS ....... ${models.length}`,`> SOURCES ......... ${cnt('statement')} STMT · ${cnt('komet')} KOMET · ${cnt('payment')} PROOF`,`> STATEMENTS SAY .. ${money(T.stmt)}`,`> KOMET SAYS ...... ${money(T.komet)}`,`> RECONCILED ...... ${money(T.rec)}`,`> EXCEPTIONS ...... ${T.nEx}`,'> STATUS .......... READY'];
+  const log=$('bootLog');
+  for(const l of lines){ log.textContent+=l+'\n'; if(!skipBoot) await sleep(190); }
+  if(!skipBoot) await sleep(350);
+  b.classList.add('out'); await sleep(skipBoot?0:450); b.hidden=true; b.classList.remove('out');
+  try{ sessionStorage.setItem('bloomline-ap-booted','1'); }catch(e){}
+  goEnter($('t-overview')); ['v-rec','v-s','v-k'].forEach(id=>{ $(id)._shown=0; }); render();
+}
+function bootInit(){
+  let skip=RM||!fxOn; try{ if(sessionStorage.getItem('bloomline-ap-booted')) skip=true; }catch(e){}
+  if(location.hash==='#skip') skip=true;
+  if(skip){ goEnter($('t-overview')); return; }
+  const b=$('boot'); b.hidden=false;
+  const hit=()=>{ if(!booting) setTimeout(runBoot, mode==='connecting'?600:0); else skipBoot=true; };
+  b.addEventListener('pointerdown',hit);
+  document.addEventListener('keydown',function h(){ if(b.hidden){ document.removeEventListener('keydown',h,true); return; } hit(); },true);
+  setTimeout(()=>{ if(!booting && !b.hidden) runBoot(); },3800);
+}
+function setAmbient(on){
+  document.body.classList.toggle('ambient',on);
+  if(on){ try{ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(()=>{}); }catch(e){} }
+  else if(document.fullscreenElement){ try{ document.exitFullscreen().catch(()=>{}); }catch(e){} }
+}
+function setFx(on){
+  fxOn=on; document.body.classList.toggle('fx',on); $('btnFx').textContent='FX: '+(on?'on':'off'); $('btnFx').setAttribute('aria-pressed',on);
+  try{ localStorage.setItem('bloomline-ap-fx',on?'on':'off'); }catch(e){}
+  if(on) bg.start(); else bg.stop();
+}
+function tickClock(){ const d=new Date(); $('clock').textContent=d.toLocaleTimeString('en-US',{hour12:false}); }
+function fxInit(){
+  const ticks=[]; for(let i=0;i<24;i++){ const a=i*15*Math.PI/180, r1=55, r2=i%6===0?50:52.5; ticks.push(`<line x1="${(60+r1*Math.sin(a)).toFixed(1)}" y1="${(60-r1*Math.cos(a)).toFixed(1)}" x2="${(60+r2*Math.sin(a)).toFixed(1)}" y2="${(60-r2*Math.cos(a)).toFixed(1)}" stroke-width="1"/>`); } $('ticks').innerHTML=ticks.join('');
+  document.body.classList.toggle('fx',fxOn); $('btnFx').textContent='FX: '+(fxOn?'on':'off'); $('btnFx').setAttribute('aria-pressed',fxOn); if(RM) $('btnFx').hidden=true;
+  $('btnFx').onclick=()=>setFx(!fxOn); $('btnAmb').onclick=()=>setAmbient(true); $('amb').onclick=()=>setAmbient(false);
+  document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement && document.body.classList.contains('ambient')) setAmbient(false); });
+  addEventListener('resize',()=>bg.resize()); addEventListener('pointermove',e=>bg.point(e.clientX,e.clientY),{passive:true});
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) bg.start(); });
+  document.addEventListener('keydown',ev=>{
+    if(!$('boot').hidden) return;
+    if(document.body.classList.contains('ambient')){ ev.preventDefault(); setAmbient(false); return; }
+    if(dlg.open || ev.metaKey || ev.ctrlKey || ev.altKey || /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName||'')) return;
+    const map={'1':'overview','2':'intake','3':'match','4':'invoices','5':'payments','6':'reconcile','7':'files'};
+    if(map[ev.key]){ switchTab(map[ev.key]); }
+    else if(ev.key==='p'||ev.key==='P'){ ev.preventDefault(); openEntry('pay'); }
+    else if(ev.key==='i'||ev.key==='I'){ ev.preventDefault(); openEntry('inv'); }
+    else if(ev.key==='u'||ev.key==='U'){ switchTab('intake'); }
+    else if(ev.key==='a'||ev.key==='A'){ setAmbient(true); }
+  });
+  dlg.addEventListener('close',()=>bg.start());
+  bg.start(); tickClock(); setInterval(tickClock,1000); bootInit();
+}
+addEventListener('beforeunload', e=>{ if(reviews.some(r=>r.stage==='review'||r.stage==='reading')){ e.preventDefault(); e.returnValue=''; } });
+fxInit(); init();
+</script>
