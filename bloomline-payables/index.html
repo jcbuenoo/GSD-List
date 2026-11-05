@@ -143,6 +143,13 @@ th[data-sort]{cursor:pointer}
 body.fx .pay-dot{animation:pulse 2.4s ease-in-out infinite}
 svg text{fill:var(--muted);font-size:10.5px;font-family:var(--mono)}
 #xr{font:12px var(--mono);color:var(--amber);min-height:18px;margin-top:4px}
+#fresh{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:12px 16px}
+#fresh .fk{font:11px var(--mono);letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+#fresh .fv{font:700 20px var(--mono);margin-top:2px;font-variant-numeric:tabular-nums}
+#fresh .fs{font:12px var(--mono);color:var(--muted);margin-top:2px}
+#fresh .fv.ok{color:var(--ok)} #fresh .fv.warn{color:var(--warn)} #fresh .fv.bad{color:var(--bad)}
+#fresh .fwide{grid-column:1/-1;font-size:12.5px}
+@media(max-width:900px){#fresh{grid-template-columns:1fr 1fr}}
 .kv{display:grid;grid-template-columns:1fr auto;gap:8px 14px;font-size:14px;align-items:center}
 .kv .big{font:700 16px var(--mono);text-align:right}
 .preview{font-size:13px;background:var(--ok-bg);border:1px solid rgba(125,220,106,.25);border-radius:3px;padding:8px 10px;margin:4px 0 10px;min-height:40px}
@@ -260,6 +267,7 @@ body.ambient .wrap{opacity:0;pointer-events:none}
   </div>
 </header>
 
+<section class="card" id="fresh" aria-label="Data freshness" style="margin-bottom:12px"></section>
 <div id="banners"></div>
 
 <section class="cards" aria-label="Totals">
@@ -359,6 +367,7 @@ body.ambient .wrap{opacity:0;pointer-events:none}
     <select id="hintSup" aria-label="Supplier for these files"></select>
     <span class="hint" id="aiNote" style="margin:0"></span>
   </div>
+  <div class="card" id="inboxCard" hidden style="margin-bottom:12px"><h2>From compras@ · waiting for a PDF or review</h2><div class="scroll" id="inboxList"></div></div>
   <div id="reviews"></div>
 </section>
 
@@ -466,11 +475,11 @@ function toast(msg, undo){
 function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('Could not load '+src.split('/').slice(-1)[0])); document.head.appendChild(s); }); }
 
 /* ================= state & storage ================= */
-const state = { suppliers:{}, docs:{}, res:{}, log:{} };
+const state = { suppliers:{}, docs:{}, res:{}, log:{}, inbox:{}, meta:{} };
 const caps = { db:null, assets:null, sample:null, downloads:null, limits:null };
 let mode = 'connecting';
 const LS = 'bloomline-payables-local';
-const COLS = {suppliers:'suppliers', docs:'docs', res:'resolutions', log:'activity'};
+const COLS = {suppliers:'suppliers', docs:'docs', res:'resolutions', log:'activity', inbox:'inbox', meta:'meta'};
 
 let lastSaved=null, readOnly=false;
 function persistLocal(){ if(mode!=='local') return; try{ localStorage.setItem(LS, JSON.stringify(state)); }catch(e){} }
@@ -509,10 +518,10 @@ async function init(){
     const sub = (col) => db.collection(COLS[col]).onSnapshot(snap=>{
       const o={}; snap.docs.forEach(d=>{ o[d.id]=d.data(); }); state[col]=o; scheduleRender();
     }, e=>{ toast('Lost the live connection. Reload the page to reconnect.'); });
-    sub('suppliers'); sub('docs'); sub('res'); sub('log');
+    sub('suppliers'); sub('docs'); sub('res'); sub('log'); sub('inbox'); sub('meta');
   } else {
     mode='local';
-    try{ const raw=localStorage.getItem(LS); if(raw){ const s=JSON.parse(raw); ['suppliers','docs','res','log'].forEach(k=>{ if(s&&s[k]&&typeof s[k]==='object') state[k]=s[k]; }); } }catch(e){}
+    try{ const raw=localStorage.getItem(LS); if(raw){ const s=JSON.parse(raw); ['suppliers','docs','res','log','inbox','meta'].forEach(k=>{ if(s&&s[k]&&typeof s[k]==='object') state[k]=s[k]; }); } }catch(e){}
   }
   setStatus(); render();
 }
@@ -525,11 +534,11 @@ function docOrder(d){ return (d.docDate||'') + '|' + (d.uploadedAt||''); }
 function gather(sid){
   const docs = Object.entries(state.docs).map(([id,d])=>Object.assign({id},d)).sort((a,b)=>docOrder(a)<docOrder(b)?-1:1);
   const src = {S:new Map(), K:new Map(), P:new Map(), B:new Map()};
-  let cutoff=null, closing=null, lastStmt=null, nDocs={S:0,K:0,P:0,B:0}, kClosing=null, kClosingDate='';
+  let cutoff=null, closing=null, lastStmt=null, nDocs={S:0,K:0,P:0,B:0}, kClosing=null, kClosingDate='', kAsOf='', kUploaded='';
   const start = state.suppliers[sid]?.startDate || '';
   /* A statement is a snapshot: only the latest uploaded statement for this supplier counts (plus manual statement lines). */
   for(const d of docs){
-    if(d.kind!=='statement' || d.manual) continue;
+    if(d.kind!=='statement' || d.manual || d.emailInvoice) continue;
     const lines=(d.lines||[]).filter(l=>l.s===sid); if(!lines.length) continue;
     const dd = d.docDate || lines.reduce((m,l)=>l.d>m?l.d:m,'');
     if(!cutoff || dd>=cutoff){ cutoff=dd; lastStmt=d; closing = (d.closing && d.closing[sid]!=null) ? C(d.closing[sid]) : null; }
@@ -541,12 +550,14 @@ function gather(sid){
     if(!lines.length) continue;
     nDocs[code]++;
     if(code==='K' && d.closing && d.closing[sid]!=null && (d.docDate||'')>=kClosingDate){ kClosing=C(d.closing[sid]); kClosingDate=d.docDate||''; }
-    if(code==='S' && !d.manual && (d.batch||d.id)!==stmtBatch) continue;
+    if(code==='K'){ const asOf=d.docDate||(d.uploadedAt||'').slice(0,10); if(asOf>kAsOf) kAsOf=asOf; if((d.uploadedAt||'')>kUploaded) kUploaded=d.uploadedAt||''; }
+    if(code==='S' && !d.manual && !d.emailInvoice && (d.batch||d.id)!==stmtBatch) continue;
     if(code==='S' && d.manual && closing==null && !lastStmt){ cutoff = cutoff && cutoff>d.docDate ? cutoff : d.docDate; }
     const seenHere = {};
     lines.forEach((l,ix)=>{
       if(start && l.d && l.d<start && code!=='S') return;
       if(code==='B' && l.t!=='pay') return;
+      if(d.emailInvoice && cutoff && l.d && l.d<=cutoff) return; // invoice emails only fill the gap after the latest statement
       const line = {t:l.t, d:l.d||'', r:l.r||'', awb:l.awb||'', c:C(l.a), ap:Array.isArray(l.ap)?l.ap:[], m:l.m||'', n:l.n||'', v:!!l.v, doc:d.id, ix:(d.lines||[]).indexOf(l), docName:d.fileName||'', src:code};
       let key = l.t==='pay' ? `pay|${line.d}|${line.c}|${nref(line.r)}` : (nref(line.r) ? `${l.t}|${nref(line.r)}` : `${l.t}|${line.d}|${line.c}`);
       if(seenHere[key]){ let n=2; while(seenHere[key+'#'+n]) n++; key=key+'#'+n; }
@@ -555,7 +566,7 @@ function gather(sid){
       src[code].set(key, line); // newer document replaces older one with the same key
     });
   }
-  return {S:[...src.S.values()], K:[...src.K.values()], P:[...src.P.values()], B:[...src.B.values()], cutoff, closing, lastStmt, nDocs, kClosing, kClosingDate};
+  return {S:[...src.S.values()], K:[...src.K.values()], P:[...src.P.values()], B:[...src.B.values()], cutoff, closing, lastStmt, nDocs, kClosing, kClosingDate, kAsOf, kUploaded};
 }
 
 function latestBankDate(){ let m=''; for(const d of Object.values(state.docs)) if(d.kind==='bank' && (d.docDate||'')>m) m=d.docDate||''; return m; }
@@ -621,6 +632,8 @@ function supplierModel(sid){
       if(r.s.c!==r.k.c){ st='bad'; lb='Amount Δ'; act='Pull the invoice copy. Fix the Komet bill or ask the farm for a credit.'; }
       else if(r.soft){ st='warn'; lb='Ref differs'; act=`Statement says #${r.s.r||'—'}, Komet says #${r.k.r||'—'}. Correct the invoice number in Komet.`; }
       else { st='ok'; lb='Matched'; }
+    } else if(r.s && g.kAsOf && r.d && r.d>g.kAsOf){
+      st='pend'; lb='After Komet export'; act=`Dated after the Komet export of ${dshow(g.kAsOf)}. Re-export Komet to check it.`;
     } else if(r.s){
       st='bad'; lb = r.t==='cr'?'Credit not in Komet':'Not in Komet'; act = r.t==='cr'?'Record the credit memo in Komet.':'Enter the bill in Komet, or dispute it with the farm if you never received the product.';
     } else {
@@ -700,12 +713,12 @@ let curTab='overview', curSup='', mFilter='ex';
 let CM=null;
 const TAB_RENDER = {
   overview:()=>{ renderSuppliers(); renderChart(); renderOpen(); renderQueue(); renderPlan(); renderAging(); renderFlags(); },
-  intake:()=>renderReviews(), match:()=>renderMatch(), invoices:()=>renderInvoices(), payments:()=>renderPayments(),
+  intake:()=>{ renderInbox(); renderReviews(); }, match:()=>renderMatch(), invoices:()=>renderInvoices(), payments:()=>renderPayments(),
   reconcile:()=>{ renderReconcile(); renderChecklist(); }, files:()=>{ renderFiles(); renderActivity(); }
 };
 function render(){
   CM = computeAll();
-  renderHero(); renderLedger(); renderBanners(); renderSupSelects(); setStatus();
+  renderHero(); renderLedger(); renderFresh(); renderBanners(); renderSupSelects(); setStatus();
   (TAB_RENDER[curTab]||TAB_RENDER.overview)();
 }
 function num(el,target){
@@ -730,6 +743,37 @@ function renderHero(){
   $('amb-v').textContent = money(T.rec);
   $('amb-s').textContent = `STATEMENTS ${money(T.stmt)} · KOMET ${money(T.komet)} · ${T.nEx} EXCEPTIONS`;
   const ib=$('intakeBadge'); const pending=reviews.filter(r=>r.stage==='review').length; ib.hidden=!pending; ib.textContent=pending;
+}
+function ago(iso){
+  if(!iso) return null; const ms=Date.now()-Date.parse(iso); if(!(ms>=0)) return null;
+  const m=Math.floor(ms/6e4), h=Math.floor(m/60), d=Math.floor(h/24);
+  return d>=1 ? `${d}d ${h%24}h` : h>=1 ? `${h}h ${m%60}m` : `${m}m`;
+}
+function renderFresh(){
+  const kDocs=Object.values(state.docs).filter(d=>d.kind==='komet');
+  const kUp=kDocs.reduce((a,d)=>(d.uploadedAt||'')>a?d.uploadedAt:a,'');
+  const kAsOf=kDocs.reduce((a,d)=>{ const x=d.docDate||(d.uploadedAt||'').slice(0,10); return x>a?x:a; },'');
+  const bank=latestBankDate(), bUp=Object.values(state.docs).filter(d=>d.kind==='bank').reduce((a,d)=>(d.uploadedAt||'')>a?d.uploadedAt:a,'');
+  const ing=state.meta.ingest||null;
+  const waiting=Object.values(state.inbox||{}).filter(x=>x.status==='needs_pdf'||x.status==='needs_review');
+  /* Komet must be at least as recent as each supplier's statement, otherwise newer statement invoices can't be checked */
+  const behind=CM.models.filter(m=>m.g.cutoff && (!m.g.kAsOf || m.g.kAsOf<m.g.cutoff)).map(m=>({n:supName(m.sid), st:m.g.cutoff, k:m.g.kAsOf}));
+  const kCls = !kUp ? 'bad' : (Date.now()-Date.parse(kUp))/DAY>7 ? 'bad' : behind.length ? 'warn' : 'ok';
+  const a=ago(kUp);
+  $('fresh').innerHTML =
+    `<div><div class="fk"><span class="src K">K</span>Time since KometSales export upload</div><div class="fv ${kCls}" id="kAgo">${a?esc(a):'Never'}</div><div class="fs">${kUp?`uploaded ${dshow(kUp.slice(0,10))} · data as of ${dshow(kAsOf)}`:'Drop a Komet export on 02 Intake → K'}</div></div>`+
+    `<div><div class="fk">Komet vs latest statements</div><div class="fv ${behind.length?'warn':'ok'}">${CM.models.some(m=>m.g.cutoff)?(behind.length?`${behind.length} behind`:'In step'):'—'}</div><div class="fs">${behind.length?'Komet export is older than these statements':'Komet covers every statement date'}</div></div>`+
+    `<div><div class="fk"><span class="src B">B</span>Bank statement</div><div class="fv ${bank&&(Date.now()-dms(bank))/DAY<=35?'ok':'warn'}">${bUp?esc(ago(bUp)):'Never'}</div><div class="fs">${bank?'covers to '+dshow(bank):'No bank statement uploaded'}</div></div>`+
+    `<div><div class="fk">Auto-import from compras@</div><div class="fv ${ing&&ing.lastRun&&(Date.now()-Date.parse(ing.lastRun))/DAY<=2?'ok':'warn'}">${ing&&ing.lastRun?esc(ago(ing.lastRun))+' ago':'Not run yet'}</div><div class="fs">${waiting.length?`<a href="#" data-goinbox="1">${waiting.length} statement${waiting.length>1?'s':''} waiting for a PDF or review</a>`:(ing?`last run loaded ${ing.loaded||0}, skipped ${ing.skipped||0}`:'Runs daily at 6:23 PM Miami time')}</div></div>`+
+    (behind.length?`<div class="fwide flag" style="margin:0">${behind.slice(0,8).map(b=>`<b>${esc(b.n)}</b>: statement ${dshow(b.st)}, Komet ${b.k?dshow(b.k):'none'}`).join(' · ')}${behind.length>8?` · +${behind.length-8} more`:''}. Upload a Komet export dated on or after the statement before trusting "Not in Komet".</div>`:'');
+}
+setInterval(()=>{ if(CM && $('kAgo')) renderFresh(); }, 60000);
+function renderInbox(){
+  const box=$('inboxList'); if(!box) return;
+  const items=Object.entries(state.inbox||{}).map(([id,x])=>Object.assign({id},x)).filter(x=>x.status!=='dismissed').sort((a,b)=>(b.received||'')<(a.received||'')?-1:1);
+  const open=items.filter(x=>x.status==='needs_pdf'||x.status==='needs_review');
+  $('inboxCard').hidden=!items.length;
+  box.innerHTML = open.length ? `<table><thead><tr><th>Received</th><th>Supplier</th><th>Type</th><th>As of</th><th class="num">Balance in email</th><th>Why it's waiting</th><th></th></tr></thead><tbody>${open.map(x=>`<tr><td>${esc((x.received||'').slice(0,10))}</td><td>${esc(x.supplier||'?')}</td><td>${esc(x.type||'statement')}</td><td>${dshow(x.date)}</td><td class="num">${x.balance!=null?money(C(x.balance)):'—'}</td><td class="wrap">${esc(x.reason||'Lines are only in the PDF attachment')}${x.link?` · <a href="${esc(x.link)}" target="_blank" rel="noopener">open email</a>`:''}</td><td><button class="small ghost" type="button" data-inboxdone="${esc(x.id)}">Done</button> <button class="small ghost" type="button" data-inboxdismiss="${esc(x.id)}">Dismiss</button></td></tr>`).join('')}</tbody></table><p class="hint">Save the PDF from the email and drop it on the matching box above. Mark it Done once it's loaded.</p>` : `<div class="empty">Nothing waiting. Every statement the auto-import found is loaded.</div>`;
 }
 function renderBanners(){
   const b=[];
@@ -818,7 +862,7 @@ function renderMatch(){
   const m=CM.models.find(x=>x.sid===curSup);
   if(!m){ $('matchBody').innerHTML=`<div class="card"><div class="empty">Pick a supplier once documents are in.</div></div>`; return; }
   const gapS = m.hasS ? m.stmt-m.rec : null, gapK = m.hasK ? m.komet-m.rec : null;
-  const tri=`<div class="tri"><div><div class="k"><span class="src S">S</span>Statement${m.g.cutoff?' · '+dshow(m.g.cutoff):''}</div><div class="v s-col">${m.hasS?money(m.stmt):'—'}</div><div class="s">${gapS==null?'No statement yet':'vs reconciled '+smoney(gapS)}</div></div><div><div class="k"><span class="src K">K</span>Komet</div><div class="v k-col">${m.hasK?money(m.komet):'—'}</div><div class="s">${gapK==null?'No Komet data yet':'vs reconciled '+smoney(gapK)}</div></div><div><div class="k"><span class="src P">P</span>Proven paid</div><div class="v p-col">${money(m.proven)}</div><div class="s">${m.pays.filter(p=>p.p).length} payment${m.pays.filter(p=>p.p).length===1?'':'s'} with proof</div></div><div><div class="k">Reconciled owed</div><div class="v">${money(m.rec)}</div><div class="s">${healthBar(m.health)} matched</div></div></div>`;
+  const tri=`<div class="tri"><div><div class="k"><span class="src S">S</span>Statement${m.g.cutoff?' · '+dshow(m.g.cutoff):''}</div><div class="v s-col">${m.hasS?money(m.stmt):'—'}</div><div class="s">${gapS==null?'No statement yet':'vs reconciled '+smoney(gapS)}</div></div><div><div class="k"><span class="src K">K</span>Komet${m.g.kAsOf?' · '+dshow(m.g.kAsOf):''}</div><div class="v k-col">${m.hasK?money(m.komet):'—'}</div><div class="s">${gapK==null?'No Komet data yet':'vs reconciled '+smoney(gapK)}</div></div><div><div class="k"><span class="src P">P</span>Proven paid</div><div class="v p-col">${money(m.proven)}</div><div class="s">${m.pays.filter(p=>p.p).length} payment${m.pays.filter(p=>p.p).length===1?'':'s'} with proof</div></div><div><div class="k">Reconciled owed</div><div class="v">${money(m.rec)}</div><div class="s">${healthBar(m.health)} matched</div></div></div>`;
   let bridge='';
   if(m.hasS){
     const tot = m.stmtLines + (m.g.closing!=null ? 0 : 0);
@@ -1506,6 +1550,9 @@ document.addEventListener('click',e=>{
   if(ds.deldoc){ deleteDocDlg(ds.deldoc); return; }
   if(ds.rename){ renameDlg(ds.rename); return; }
   if(ds.settings){ settingsDlg(ds.settings); return; }
+  if(ds.goinbox){ e.preventDefault(); switchTab('intake'); return; }
+  if(ds.inboxdone){ patch('inbox', ds.inboxdone, {status:'loaded', doneAt:new Date().toISOString()}).then(()=>{ logAct('Marked an emailed statement as loaded'); renderInbox(); renderFresh(); }); return; }
+  if(ds.inboxdismiss){ patch('inbox', ds.inboxdismiss, {status:'dismissed', doneAt:new Date().toISOString()}).then(()=>{ logAct('Dismissed an emailed statement'); renderInbox(); renderFresh(); }); return; }
   if(t.id==='btnAddSup'){ addSupplierDlg(); return; }
   if(ds.merge){ mergeDlg(ds.merge); return; }
   const rv=reviews.find(r=>r.id===(ds.stop||ds.discard||ds.commit||ds.addl||ds.rv));
