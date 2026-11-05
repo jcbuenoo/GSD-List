@@ -8,7 +8,7 @@
   --chip:rgba(255,255,255,.05); --field:rgba(0,0,0,.4);
   --ok:#7ddc6a; --ok-bg:rgba(125,220,106,.13); --bad:#ff7456; --bad-bg:rgba(255,116,86,.13);
   --warn:#ffd36a; --warn-bg:rgba(255,211,106,.12); --pend:#8fb8ff; --pend-bg:rgba(143,184,255,.12);
-  --c-s:#ffa24a; --c-k:#8fb8ff; --c-p:#7ddc6a;
+  --c-s:#ffa24a; --c-k:#8fb8ff; --c-p:#7ddc6a; --c-b:#e0a8ff;
   --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
   --sans:Arial,Helvetica,sans-serif;
   color-scheme:dark; box-sizing:border-box;
@@ -95,8 +95,8 @@ tfoot td{font-weight:700;border-top:1px solid var(--line2)}
 .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.pend{background:var(--pend-bg);color:var(--pend)}
 .pill.res{background:var(--chip);color:var(--muted)}
 .src{display:inline-block;width:18px;height:18px;line-height:16px;text-align:center;border-radius:2px;font:700 10.5px var(--mono);border:1px solid currentColor;margin-right:2px}
-.src.S{color:var(--c-s)} .src.K{color:var(--c-k)} .src.P{color:var(--c-p)} .src.off{color:rgba(255,255,255,.18);border-style:dashed}
-.amtS{color:var(--c-s)} .amtK{color:var(--c-k)} .amtP{color:var(--c-p)}
+.src.S{color:var(--c-s)} .src.K{color:var(--c-k)} .src.P{color:var(--c-p)} .src.B{color:var(--c-b)} .src.off{color:rgba(255,255,255,.18);border-style:dashed}
+.amtS{color:var(--c-s)} .amtK{color:var(--c-k)} .amtP{color:var(--c-p)} .amtB{color:var(--c-b)}
 .delta{color:var(--bad);font-weight:700}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
 input,select,textarea{font:14px var(--mono);color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:3px;padding:8px 10px;width:100%;min-height:38px;color-scheme:dark}
@@ -152,11 +152,12 @@ svg text{fill:var(--muted);font-size:10.5px;font-family:var(--mono)}
 #toast button{min-height:26px;padding:2px 10px}
 
 /* intake */
-.bays{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.bays{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px}
+@media(max-width:1100px){.bays{grid-template-columns:1fr 1fr}}
 label.drop{display:grid;gap:6px;align-content:start;cursor:pointer;min-height:170px;transition:background .2s,box-shadow .2s}
 label.drop:hover,label.drop.over{background:rgba(255,162,74,.08);box-shadow:0 0 22px rgba(255,162,74,.18)}
 label.drop .code{font:700 34px var(--mono);line-height:1}
-label.drop.S .code{color:var(--c-s)} label.drop.K .code{color:var(--c-k)} label.drop.P .code{color:var(--c-p)}
+label.drop.S .code{color:var(--c-s)} label.drop.K .code{color:var(--c-k)} label.drop.P .code{color:var(--c-p)} label.drop.B .code{color:var(--c-b)}
 label.drop .ttl{font:700 13px var(--mono);letter-spacing:.12em;text-transform:uppercase}
 label.drop .desc{font-size:13px;color:var(--muted)}
 label.drop .go{font:600 11.5px var(--mono);letter-spacing:.08em;color:var(--amber);text-transform:uppercase;margin-top:auto}
@@ -319,6 +320,7 @@ body.ambient .wrap{opacity:0;pointer-events:none}
   <div class="grid2">
     <div class="card"><h2>Action queue · biggest dollar impact first</h2><div class="scroll" id="queue"></div></div>
     <div class="stack">
+      <div class="card"><h2>Payment plan · by due date</h2><div id="plan"></div></div>
       <div class="card"><h2>Aging petals · reconciled open</h2><div id="aging"></div></div>
       <div class="card"><h2>Data checks</h2><div id="flags"></div></div>
     </div>
@@ -344,6 +346,12 @@ body.ambient .wrap{opacity:0;pointer-events:none}
       <span class="desc">Wire or ACH confirmations, check copies, Zelle or bank screenshots.</span>
       <span class="go">Drop files or tap to choose</span>
       <input type="file" id="in-payment" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xlsx,.xls,.txt,application/pdf,image/*">
+    </label>
+    <label class="card drop B" data-kind="bank" id="bay-bank">
+      <span class="code">B</span><span class="ttl">Bank statement</span>
+      <span class="desc">Monthly bank statement or activity export. Only payments to suppliers are kept.</span>
+      <span class="go">Drop files or tap to choose</span>
+      <input type="file" id="in-bank" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xlsx,.xls,.txt,.qfx,.ofx,application/pdf,image/*">
     </label>
   </div>
   <div class="toolbar">
@@ -396,12 +404,14 @@ body.ambient .wrap{opacity:0;pointer-events:none}
     <div class="card"><h2>2 · Bank verification</h2><div id="verif"></div></div>
   </div>
   <div class="card" style="margin-top:12px"><h2>3 · Payments that don't land on an invoice boundary</h2><div id="bounds"></div></div>
-  <div class="card" style="margin-top:12px"><h2>4 · Backup</h2><div id="backup"></div></div>
+  <div class="card" style="margin-top:12px"><h2>4 · Month-end checklist · every supplier</h2><div class="scroll" id="checklist"></div></div>
+  <div class="card" style="margin-top:12px"><h2>5 · Backup</h2><div id="backup"></div></div>
 </section>
 
 <section id="t-files" role="tabpanel" aria-labelledby="tab-files" hidden>
   <div class="card" style="margin-bottom:12px"><h2>Uploaded documents</h2><div class="scroll" id="docTbl"></div></div>
-  <div class="card"><h2>Suppliers</h2><div class="scroll" id="supEdit"></div><p class="hint">Merge two names when the same farm came in spelled differently (for example a Komet vendor name and the name on the farm's letterhead).</p></div>
+  <div class="card" style="margin-bottom:12px"><h2>Suppliers</h2><div class="toolbar"><button class="small" type="button" id="btnAddSup">+ Add supplier</button><span class="hint" style="margin:0">Add every farm you buy from, even before its first statement, so a missing statement is noticed.</span></div><div class="scroll" id="supEdit"></div><p class="hint">Merge two names when the same farm came in spelled differently (for example a Komet vendor name and the name on the farm's letterhead).</p></div>
+  <div class="card"><h2>Activity log</h2><div class="scroll" id="actLog" style="max-height:420px;overflow-y:auto"></div></div>
 </section>
 <div class="kbd"><b>1–7</b> channels · <b>P</b> record payment · <b>I</b> add invoice · <b>U</b> upload · <b>A</b> ambient · <b>Esc</b> close</div>
 </div>
@@ -418,8 +428,10 @@ const XLSXJS = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min
 const KIND = {
   statement:{code:'S', label:'Supplier statement'},
   komet:{code:'K', label:'KometSales export'},
-  payment:{code:'P', label:'Proof of payment'}
+  payment:{code:'P', label:'Proof of payment'},
+  bank:{code:'B', label:'Bank statement'}
 };
+const RES_REASONS=['Timing difference (will clear next statement)','Supplier error · credit requested','Our error · fixed in Komet','Duplicate entry','Paid by offset / credit / duties refund','Accepted difference (written off)','Other'];
 const TYPE_LABEL = {inv:'Invoice', cr:'Credit', pay:'Payment'};
 const $ = id => document.getElementById(id);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -454,11 +466,11 @@ function toast(msg, undo){
 function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('Could not load '+src.split('/').slice(-1)[0])); document.head.appendChild(s); }); }
 
 /* ================= state & storage ================= */
-const state = { suppliers:{}, docs:{}, res:{} };
+const state = { suppliers:{}, docs:{}, res:{}, log:{} };
 const caps = { db:null, assets:null, sample:null, downloads:null, limits:null };
 let mode = 'connecting';
 const LS = 'bloomline-payables-local';
-const COLS = {suppliers:'suppliers', docs:'docs', res:'resolutions'};
+const COLS = {suppliers:'suppliers', docs:'docs', res:'resolutions', log:'activity'};
 
 let lastSaved=null, readOnly=false;
 function persistLocal(){ if(mode!=='local') return; try{ localStorage.setItem(LS, JSON.stringify(state)); }catch(e){} }
@@ -476,6 +488,7 @@ async function del(col, id){
   if(caps.db){ await caps.db.collection(COLS[col]).doc(id).delete().catch(guard); saved(); }
   else { delete state[col][id]; persistLocal(); saved(); render(); }
 }
+function logAct(text){ const id=newId('a'); const rec={ts:new Date().toISOString(), text:String(text).slice(0,300)}; put('log', id, rec).catch(()=>{}); }
 function setStatus(){
   const st=$('status'), dot=$('dot');
   const when = lastSaved ? ' · last saved '+lastSaved.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
@@ -496,10 +509,10 @@ async function init(){
     const sub = (col) => db.collection(COLS[col]).onSnapshot(snap=>{
       const o={}; snap.docs.forEach(d=>{ o[d.id]=d.data(); }); state[col]=o; scheduleRender();
     }, e=>{ toast('Lost the live connection. Reload the page to reconnect.'); });
-    sub('suppliers'); sub('docs'); sub('res');
+    sub('suppliers'); sub('docs'); sub('res'); sub('log');
   } else {
     mode='local';
-    try{ const raw=localStorage.getItem(LS); if(raw){ const s=JSON.parse(raw); ['suppliers','docs','res'].forEach(k=>{ if(s&&s[k]&&typeof s[k]==='object') state[k]=s[k]; }); } }catch(e){}
+    try{ const raw=localStorage.getItem(LS); if(raw){ const s=JSON.parse(raw); ['suppliers','docs','res','log'].forEach(k=>{ if(s&&s[k]&&typeof s[k]==='object') state[k]=s[k]; }); } }catch(e){}
   }
   setStatus(); render();
 }
@@ -511,8 +524,9 @@ function docOrder(d){ return (d.docDate||'') + '|' + (d.uploadedAt||''); }
 
 function gather(sid){
   const docs = Object.entries(state.docs).map(([id,d])=>Object.assign({id},d)).sort((a,b)=>docOrder(a)<docOrder(b)?-1:1);
-  const src = {S:new Map(), K:new Map(), P:new Map()};
-  let cutoff=null, closing=null, lastStmt=null, nDocs={S:0,K:0,P:0};
+  const src = {S:new Map(), K:new Map(), P:new Map(), B:new Map()};
+  let cutoff=null, closing=null, lastStmt=null, nDocs={S:0,K:0,P:0,B:0}, kClosing=null, kClosingDate='';
+  const start = state.suppliers[sid]?.startDate || '';
   /* A statement is a snapshot: only the latest uploaded statement for this supplier counts (plus manual statement lines). */
   for(const d of docs){
     if(d.kind!=='statement' || d.manual) continue;
@@ -526,10 +540,13 @@ function gather(sid){
     const lines = (d.lines||[]).filter(l=>l.s===sid);
     if(!lines.length) continue;
     nDocs[code]++;
+    if(code==='K' && d.closing && d.closing[sid]!=null && (d.docDate||'')>=kClosingDate){ kClosing=C(d.closing[sid]); kClosingDate=d.docDate||''; }
     if(code==='S' && !d.manual && (d.batch||d.id)!==stmtBatch) continue;
     if(code==='S' && d.manual && closing==null && !lastStmt){ cutoff = cutoff && cutoff>d.docDate ? cutoff : d.docDate; }
     const seenHere = {};
     lines.forEach((l,ix)=>{
+      if(start && l.d && l.d<start && code!=='S') return;
+      if(code==='B' && l.t!=='pay') return;
       const line = {t:l.t, d:l.d||'', r:l.r||'', awb:l.awb||'', c:C(l.a), ap:Array.isArray(l.ap)?l.ap:[], m:l.m||'', n:l.n||'', v:!!l.v, doc:d.id, ix:(d.lines||[]).indexOf(l), docName:d.fileName||'', src:code};
       let key = l.t==='pay' ? `pay|${line.d}|${line.c}|${nref(line.r)}` : (nref(line.r) ? `${l.t}|${nref(line.r)}` : `${l.t}|${line.d}|${line.c}`);
       if(seenHere[key]){ let n=2; while(seenHere[key+'#'+n]) n++; key=key+'#'+n; }
@@ -538,9 +555,10 @@ function gather(sid){
       src[code].set(key, line); // newer document replaces older one with the same key
     });
   }
-  return {S:[...src.S.values()], K:[...src.K.values()], P:[...src.P.values()], cutoff, closing, lastStmt, nDocs};
+  return {S:[...src.S.values()], K:[...src.K.values()], P:[...src.P.values()], B:[...src.B.values()], cutoff, closing, lastStmt, nDocs, kClosing, kClosingDate};
 }
 
+function latestBankDate(){ let m=''; for(const d of Object.values(state.docs)) if(d.kind==='bank' && (d.docDate||'')>m) m=d.docDate||''; return m; }
 function supplierModel(sid){
   const g = gather(sid);
   const res = state.res;
@@ -565,12 +583,16 @@ function supplierModel(sid){
   /* ---- payments: proof vs Komet vs statement ---- */
   const pP=g.P.filter(l=>l.t==='pay'), pK=g.K.filter(l=>l.t==='pay'), pS=g.S.filter(l=>l.t==='pay');
   const used=new Set();
-  const best=(list,x)=>{ let b=null, bs=1e9; for(const y of list){ if(used.has(y)||y.c!==x.c) continue; const refHit=nref(x.r)&&nref(x.r)===nref(y.r); const dd=(x.d&&y.d)?Math.abs(dms(x.d)-dms(y.d))/DAY:99; const sc=refHit?-1:dd; if(sc<=10&&sc<bs){ bs=sc; b=y; } } if(b) used.add(b); return b; };
+  let ambig=0;
+  const best=(list,x,win=10)=>{ let b=null, bs=1e9, n=0; for(const y of list){ if(used.has(y)||y.c!==x.c) continue; const refHit=nref(x.r)&&nref(x.r)===nref(y.r); const dd=(x.d&&y.d)?Math.abs(dms(x.d)-dms(y.d))/DAY:99; const sc=refHit?-1:dd; if(sc<=win){ n++; if(sc<bs){ bs=sc; b=y; } } } if(b){ used.add(b); if(n>1&&bs>=0) { ambig++; b._amb=true; } } return b; };
   const pays=[];
   [...pP].sort((a,b)=>a.d<b.d?-1:1).forEach(p=>{ pays.push({p, k:best(pK,p), s:best(pS,p)}); });
   pK.filter(k=>!used.has(k)).forEach(k=>{ used.add(k); pays.push({p:null,k,s:best(pS,k)}); });
   pS.filter(s=>!used.has(s)).forEach(s=>{ used.add(s); pays.push({p:null,k:null,s}); });
-  pays.forEach(r=>{ const b=r.p||r.k||r.s; r.t='pay'; r.d=b.d; r.amt=b.c; r.verified=[r.p,r.k,r.s].some(l=>l&&l.v); r.method=(r.p&&r.p.m)||(r.k&&r.k.m)||(r.s&&r.s.m)||''; r.ref=(r.p&&r.p.r)||(r.k&&r.k.r)||(r.s&&r.s.r)||''; r.ap=[...new Set([...(r.p?.ap||[]),...(r.k?.ap||[]),...(r.s?.ap||[])])]; r.alloc=[]; r.rowKey='P-'+r.d+'-'+r.amt+'-'+nref(r.ref); });
+  const pB=g.B; pays.forEach(r=>{ const base=r.p||r.k||r.s; r.b=best(pB,base,7); });
+  pB.filter(b=>!used.has(b)).forEach(b=>{ used.add(b); pays.push({p:null,k:null,s:null,b}); });
+  const bankCut = latestBankDate();
+  pays.forEach(r=>{ const b=r.p||r.k||r.s||r.b; r.t='pay'; r.d=b.d; r.amt=b.c; r.verified=!!r.b||[r.p,r.k,r.s].some(l=>l&&l.v); r.ambig=[r.k,r.s,r.b].some(l=>l&&l._amb); r.method=(r.p&&r.p.m)||(r.k&&r.k.m)||(r.s&&r.s.m)||(r.b&&r.b.m)||''; r.ref=(r.p&&r.p.r)||(r.k&&r.k.r)||(r.s&&r.s.r)||(r.b&&r.b.r)||''; r.ap=[...new Set([...(r.p?.ap||[]),...(r.k?.ap||[]),...(r.s?.ap||[])])]; r.alloc=[]; r.rowKey='P-'+r.d+'-'+r.amt+'-'+nref(r.ref); });
   /* ---- allocation: credits & payments to invoices, named invoices first, then oldest first ---- */
   const invs = rows.filter(r=>r.t==='inv').sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
   const byRef = new Map(invs.map(r=>[nref(r.ref),r]));
@@ -622,9 +644,12 @@ function supplierModel(sid){
       if(!r.k && st!=='bad'){ st = st==='pend'?'pend':'warn'; lb += ' · not in Komet'; act = act || 'Record this payment in Komet.'; }
       else if(!r.k){ act += ' Also record it in Komet.'; }
     }
-    else if(r.k&&r.s){ st='warn'; lb='No proof'; act='Upload the wire or check confirmation.'; }
+    else if(!r.k&&!r.s&&r.b){ st='warn'; lb='Bank only'; act='Money left the bank to this supplier but it is not in Komet or the proofs. Record it in Komet and upload the confirmation.'; }
+    else if(r.k&&r.s){ st=r.b?'ok':'warn'; lb=r.b?'Komet + stmt + bank':'No proof'; act=r.b?'':'Upload the wire or check confirmation.'; }
     else if(r.k){ st= after(r.d)?'pend':'warn'; lb='No proof · off stmt'; act='Upload the proof of payment.'; }
     else { st='warn'; lb='Statement only'; act='The farm shows a payment you have no record of. Find the bank record and record it in Komet.'; }
+    if(bankCut && !r.b && (r.p||r.k) && r.d && dms(r.d) <= dms(bankCut)-3*DAY){ st='bad'; lb='Not on bank'; act='Recorded as paid but no matching debit on the bank statement. Check the wire went out and was not returned or sent twice.'; }
+    if(r.ambig && st==='ok'){ st='warn'; lb+=' · check pairing'; act='Another payment of the same amount is close in date. Confirm the references match.'; }
     r.st=st; r.lb=lb; r.act=act; r.impact=r.amt;
   });
   [...rows,...pays].forEach(r=>{ const rr=res[rKey(r.rowKey)]; r.resId=rKey(r.rowKey); if(rr && r.st!=='ok'){ r.resolved=rr; r.st0=r.st; r.st='res'; } });
@@ -646,6 +671,8 @@ function supplierModel(sid){
   const all=[...rows,...pays];
   const nOk=all.filter(r=>r.st==='ok'||r.st==='res').length, nEx=all.filter(r=>r.st==='bad'||r.st==='warn').length;
   const open=invs.filter(r=>r.open>0);
+  const terms = +(state.suppliers[sid]?.terms ?? 30);
+  rows.forEach(r=>{ r.due = isISO(r.d) ? new Date(dms(r.d)+terms*DAY).toISOString().slice(0,10) : ''; });
   rows.forEach(r=>{ r.paid = r.t==='inv' ? r.amt-r.open : 0; r.status = r.t!=='inv' ? 'Credit' : r.open===0 ? 'Paid' : r.open<r.amt ? 'Partial' : 'Open'; r.sid=sid; });
   pays.forEach(p=>{ p.sid=sid; });
   const invoiced = sum(rows,r=>r.sign*r.amt), paid = sum(pays,r=>r.amt);
@@ -653,7 +680,7 @@ function supplierModel(sid){
   const allLines=[...g.S,...g.K,...g.P];
   const dups=allLines.filter(l=>l.key.includes('#')).map(l=>({ref:l.r, src:l.src, c:l.c}));
   const awbBad=allLines.filter(l=>l.awb && !/^\d{3}[- ]?\d{8}$/.test(l.awb.trim())).map(l=>({ref:l.r, awb:l.awb, src:l.src}));
-  return {sid, g, rows, pays, stmt, stmtLines, komet, proven, rec, bridge, invoiced, paid, lastPay, dups, awbBad, nOk, nEx, health: (nOk+nEx)?nOk/(nOk+nEx):null, open, unapplied, hasS:g.nDocs.S>0, hasK:g.nDocs.K>0, hasP:g.nDocs.P>0};
+  return {sid, g, rows, pays, stmt, stmtLines, komet, proven, rec, bridge, invoiced, paid, lastPay, dups, awbBad, terms, ambig, hasB:g.nDocs.B>0, nOk, nEx, health: (nOk+nEx)?nOk/(nOk+nEx):null, open, unapplied, hasS:g.nDocs.S>0, hasK:g.nDocs.K>0, hasP:g.nDocs.P>0};
 }
 function computeAll(){
   const ids = new Set(Object.keys(state.suppliers));
@@ -671,10 +698,15 @@ function computeAll(){
 /* ================= rendering ================= */
 let curTab='overview', curSup='', mFilter='ex';
 let CM=null;
+const TAB_RENDER = {
+  overview:()=>{ renderSuppliers(); renderChart(); renderOpen(); renderQueue(); renderPlan(); renderAging(); renderFlags(); },
+  intake:()=>renderReviews(), match:()=>renderMatch(), invoices:()=>renderInvoices(), payments:()=>renderPayments(),
+  reconcile:()=>{ renderReconcile(); renderChecklist(); }, files:()=>{ renderFiles(); renderActivity(); }
+};
 function render(){
   CM = computeAll();
-  renderHero(); renderBanners(); renderSuppliers(); renderQueue(); renderAging(); renderFlags(); renderSupSelects(); renderMatch(); renderFiles(); renderReviews();
-  renderLedger(); renderChart(); renderOpen(); renderInvoices(); renderPayments(); renderReconcile(); setStatus();
+  renderHero(); renderLedger(); renderBanners(); renderSupSelects(); setStatus();
+  (TAB_RENDER[curTab]||TAB_RENDER.overview)();
 }
 function num(el,target){
   cancelAnimationFrame(el._raf);
@@ -708,7 +740,7 @@ function renderBanners(){
   $('banners').innerHTML=b.join('');
 }
 function healthBar(h){ if(h==null) return '<span class="muted">—</span>'; const cls=h>=.9?'':h>=.6?' mid':' low'; return `<span class="health${cls}"><i style="width:${Math.round(h*100)}%"></i></span>${Math.round(h*100)}%`; }
-function srcDots(m){ return `<span class="src S${m.hasS?'':' off'}" title="Statement ${m.hasS?'uploaded':'missing'}">S</span><span class="src K${m.hasK?'':' off'}" title="Komet ${m.hasK?'uploaded':'missing'}">K</span><span class="src P${m.hasP?'':' off'}" title="Proof ${m.hasP?'uploaded':'missing'}">P</span>`; }
+function srcDots(m){ return `<span class="src S${m.hasS?'':' off'}" title="Statement ${m.hasS?'uploaded':'missing'}">S</span><span class="src K${m.hasK?'':' off'}" title="Komet ${m.hasK?'uploaded':'missing'}">K</span><span class="src P${m.hasP?'':' off'}" title="Proof ${m.hasP?'uploaded':'missing'}">P</span><span class="src B${m.hasB?'':' off'}" title="Bank ${m.hasB?'payments found':'none'}">B</span>`; }
 function renderSuppliers(){
   const {models}=CM;
   if(!models.length){ $('supTbl').innerHTML=`<div class="empty">No suppliers yet. Open <b>02 Intake</b> and drop in a farm's statement, your Komet export and your payment confirmations.</div>`; return; }
@@ -750,6 +782,9 @@ function renderFlags(){
   const f=[]; const t=dms(todayISO());
   CM.models.forEach(m=>{
     const n=esc(supName(m.sid));
+    if(m.ambig) f.push(`<div class="flag">${n}: ${m.ambig} payment pairing${m.ambig>1?'s are':' is'} ambiguous (same amount, close dates). Check the references on 05 Payments.</div>`);
+    const bo=m.pays.filter(p=>p.b&&!p.p&&!p.k).length; if(bo) f.push(`<div class="flag bad">${n}: ${bo} bank payment${bo>1?'s':''} with no proof and not in Komet.</div>`);
+    if(!m.hasS && !m.hasK && !m.hasP && state.suppliers[m.sid]?.expect!==false) f.push(`<div class="flag">${n}: no documents yet. Request a statement.</div>`);
     if(!m.hasS && (m.hasK||m.hasP)) f.push(`<div class="flag">${n}: no statement uploaded yet, so nothing can be checked against the farm's numbers.</div>`);
     else if(m.g.cutoff && (t-dms(m.g.cutoff))/DAY>35) f.push(`<div class="flag">${n}: latest statement is from ${dshow(m.g.cutoff)}. Ask for a current one.</div>`);
     if(!m.hasK && m.hasS) f.push(`<div class="flag">${n}: not in any Komet upload yet.</div>`);
@@ -791,7 +826,7 @@ function renderMatch(){
   }
   const iv=m.rows.filter(passF).sort((a,b)=>a.d<b.d?1:-1), pv=m.pays.filter(passF).sort((a,b)=>a.d<b.d?1:-1);
   const invT = iv.length ? `<table><thead><tr><th>Date</th><th>Type</th><th>Invoice #</th><th class="hide-sm">AWB</th><th class="num"><span class="src S">S</span>Statement</th><th class="num"><span class="src K">K</span>Komet</th><th class="num">Δ</th><th class="num hide-sm">Open</th><th>Status</th></tr></thead><tbody>${iv.map((r,ix)=>`<tr style="--i:${Math.min(ix,26)}"><td>${dshow(r.d)}</td><td>${TYPE_LABEL[r.t]}</td><td>${esc(r.ref)}${r.soft?`<div class="muted" style="font-size:11px">S #${esc(r.s.r)} · K #${esc(r.k.r)}</div>`:''}</td><td class="hide-sm">${esc(r.awb)}</td>${lineCell(r.s,'amtS')}${lineCell(r.k,'amtK')}<td class="num ${r.s&&r.k&&r.s.c!==r.k.c?'delta':'muted'}">${r.s&&r.k&&r.s.c!==r.k.c?smoney(r.k.c-r.s.c):'—'}</td><td class="num hide-sm">${r.t==='inv'?money(r.open):'—'}</td>${stCell(r)}</tr>`).join('')}</tbody></table>` : `<div class="empty">No invoices in this view.</div>`;
-  const payT = pv.length ? `<table><thead><tr><th>Date</th><th>Reference</th><th class="num"><span class="src P">P</span>Proof</th><th class="num"><span class="src K">K</span>Komet</th><th class="num"><span class="src S">S</span>Statement</th><th class="hide-sm">Applied to</th><th>Status</th></tr></thead><tbody>${pv.map((r,ix)=>`<tr style="--i:${Math.min(ix,26)}"><td>${dshow(r.d)}</td><td>${esc(r.ref)}${r.p&&r.p.m?`<div class="muted" style="font-size:11px">${esc(r.p.m)}</div>`:''}</td>${lineCell(r.p,'amtP')}${lineCell(r.k,'amtK')}${lineCell(r.s,'amtS')}<td class="wrap hide-sm">${r.alloc.length?r.alloc.map(i=>'#'+esc(i.ref||'?')).join(', '):'<span class="muted">—</span>'}</td>${stCell(r)}</tr>`).join('')}</tbody></table>` : `<div class="empty">No payments in this view.</div>`;
+  const payT = pv.length ? `<table><thead><tr><th>Date</th><th>Reference</th><th class="num"><span class="src P">P</span>Proof</th><th class="num"><span class="src K">K</span>Komet</th><th class="num"><span class="src S">S</span>Statement</th><th class="num"><span class="src B">B</span>Bank</th><th class="hide-sm">Applied to</th><th>Status</th></tr></thead><tbody>${pv.map((r,ix)=>`<tr style="--i:${Math.min(ix,26)}"><td>${dshow(r.d)}</td><td>${esc(r.ref)}${r.p&&r.p.m?`<div class="muted" style="font-size:11px">${esc(r.p.m)}</div>`:''}</td>${lineCell(r.p,'amtP')}${lineCell(r.k,'amtK')}${lineCell(r.s,'amtS')}${lineCell(r.b,'amtB')}<td class="wrap hide-sm">${r.alloc.length?r.alloc.map(i=>'#'+esc(i.ref||'?')).join(', '):'<span class="muted">—</span>'}</td>${stCell(r)}</tr>`).join('')}</tbody></table>` : `<div class="empty">No payments in this view.</div>`;
   const exs=[...m.rows,...m.pays].filter(r=>r.st==='bad'||r.st==='warn');
   $('matchBody').innerHTML = tri + `<div class="grid2" style="margin-bottom:12px"><div class="card"><h2>What to do for ${esc(supName(m.sid))}</h2>${exs.length?exs.sort((a,b)=>b.impact-a.impact).slice(0,8).map(r=>`<div class="flag ${r.st==='bad'?'bad':''}"><b>${esc(r.lb)}</b> · ${r.t==='pay'?'payment':TYPE_LABEL[r.t].toLowerCase()} ${esc(r.ref?'#'+r.ref:'')} ${money(r.impact)}. ${esc(r.act)}</div>`).join(''):'<div class="flag good">Nothing to chase with this supplier.</div>'}</div>${bridge||`<div class="card"><h2>Bridge</h2><div class="empty">Upload a statement from this supplier to see how its balance ties to yours.</div></div>`}</div>`
     + `<div class="card" style="margin-bottom:12px"><h2>Invoices &amp; credits · statement vs Komet</h2><div class="scroll">${invT}</div></div>`
@@ -806,7 +841,57 @@ function renderFiles(){
     return `<tr><td>${esc((d.uploadedAt||'').slice(0,10))}</td><td><span class="src ${k.code}">${k.code}</span><span class="hide-sm">${esc(k.label)}</span></td><td class="wrap">${link}${d.example?' <span class="pill res">example</span>':''}</td><td class="hide-sm">${dshow(d.docDate)}</td><td class="wrap">${sids.map(s=>esc(supName(s))).join(', ')||'—'}</td><td class="num">${(d.lines||[]).length}</td><td class="num hide-sm">${money(tot)}</td><td><button class="small danger" type="button" data-deldoc="${esc(d.id)}">Delete</button></td></tr>`;
   }).join('')}</tbody></table>` : `<div class="empty">Nothing uploaded yet.</div>`;
   const sups=Object.entries(state.suppliers).sort((a,b)=>a[1].name.localeCompare(b[1].name));
-  $('supEdit').innerHTML = sups.length ? `<table><thead><tr><th>Name</th><th class="num">Lines</th><th></th></tr></thead><tbody>${sups.map(([id,s])=>{ const n=Object.values(state.docs).reduce((a,d)=>a+(d.lines||[]).filter(l=>l.s===id).length,0); return `<tr><td class="wrap">${esc(s.name)}${(s.aliases||[]).length?`<div class="muted" style="font-size:11.5px">also: ${esc(s.aliases.join(', '))}</div>`:''}</td><td class="num">${n}</td><td><button class="small" type="button" data-rename="${esc(id)}">Rename</button> <button class="small" type="button" data-merge="${esc(id)}">Merge</button></td></tr>`; }).join('')}</tbody></table>` : `<div class="empty">Suppliers appear here as documents come in.</div>`;
+  $('supEdit').innerHTML = sups.length ? `<table><thead><tr><th>Name</th><th class="num">Lines</th><th>Terms</th><th></th></tr></thead><tbody>${sups.map(([id,s])=>{ const n=Object.values(state.docs).reduce((a,d)=>a+(d.lines||[]).filter(l=>l.s===id).length,0); return `<tr><td class="wrap">${esc(s.name)}${(s.aliases||[]).length?`<div class="muted" style="font-size:11.5px">also: ${esc(s.aliases.join(', '))}</div>`:''}</td><td class="num">${n}</td><td class="muted">${s.terms??30}d${s.startDate?' · from '+dshow(s.startDate):''}${s.expect===false?' · no stmt expected':''}</td><td><button class="small" type="button" data-settings="${esc(id)}">Settings</button> <button class="small" type="button" data-rename="${esc(id)}">Rename</button> <button class="small" type="button" data-merge="${esc(id)}">Merge</button></td></tr>`; }).join('')}</tbody></table>` : `<div class="empty">Suppliers appear here as documents come in.</div>`;
+}
+
+/* ================= closed-loop views ================= */
+function renderPlan(){
+  const t=todayISO(), d7=new Date(dms(t)+7*DAY).toISOString().slice(0,10), d14=new Date(dms(t)+14*DAY).toISOString().slice(0,10);
+  const open=[]; CM.models.forEach(m=>m.open.forEach(i=>open.push(i)));
+  const B=[['Overdue',i=>i.due&&i.due<t,'var(--bad)'],['Due in 7 days',i=>i.due>=t&&i.due<=d7,'var(--warn)'],['Due in 8–14 days',i=>i.due>d7&&i.due<=d14,'var(--amber)'],['Later',i=>!i.due||i.due>d14,'var(--ok)']];
+  if(!open.length){ $('plan').innerHTML='<div class="empty">Nothing open.</div>'; return; }
+  const bySup={}; open.filter(i=>i.due&&i.due<=d7).forEach(i=>{ bySup[i.sid]=(bySup[i.sid]||0)+i.open; });
+  const top=Object.entries(bySup).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  $('plan').innerHTML=`<div class="kv">${B.map(([l,f,c])=>{ const L=open.filter(f); return `<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${c};margin-right:7px"></i>${l} <span class="muted">· ${L.length}</span></span><span class="big">${money(L.reduce((a,i)=>a+i.open,0))}</span>`; }).join('')}</div>`
+    + (top.length?`<div class="hint" style="margin-top:10px">To pay by ${dshow(d7)}:</div><div class="kv" style="margin-top:4px;font-size:13px">${top.map(([sid,v])=>`<span>${esc(supName(sid))} <span class="muted">· ${state.suppliers[sid]?.terms??30}d terms</span></span><span class="big" style="font-size:14px">${money(v)}</span>`).join('')}</div>`:'')
+    + `<div class="hint">Due date = invoice date + supplier terms (set in 07 → Settings). Open amounts are after every payment and credit.</div>`;
+}
+function renderChecklist(){
+  const t=dms(todayISO()), bankCut=latestBankDate(), fresh=d=>d&&(t-dms(d))/DAY<=35;
+  const rows=CM.models.filter(m=>state.suppliers[m.sid]?.expect!==false || m.rows.length);
+  if(!rows.length){ $('checklist').innerHTML='<div class="empty">Add suppliers to see the checklist.</div>'; return; }
+  const mark=(ok,why)=>`<td title="${esc(why)}">${ok===null?'<span class="muted">—</span>':ok?'<span class="pill ok">✓</span>':'<span class="pill bad">✗</span>'}</td>`;
+  let done=0;
+  const body=rows.map(m=>{
+    const kLast=m.g.K.reduce((a,l)=>l.d>a?l.d:a,'');
+    const kTie = m.g.kClosing==null ? null : m.g.kClosing===m.komet;
+    const chk=[ fresh(m.g.cutoff), fresh(kLast), m.pays.length?m.pays.every(p=>!!p.p):null, bankCut?(fresh(bankCut)&&m.pays.every(p=>p.verified)):false, kTie, m.nEx===0 ];
+    const ok=chk.every(x=>x===null||x===true); if(ok) done++;
+    return `<tr data-go="${esc(m.sid)}" tabindex="0"><td>${esc(supName(m.sid))}</td>${mark(chk[0],'Statement dated in the last 35 days')}${mark(chk[1],'Komet data in the last 35 days')}${mark(chk[2],'Every payment has a proof file')}${mark(chk[3],'Bank statement in the last 35 days and every payment found on it')}${mark(chk[4],'Komet lines add up to the Komet report total')}${mark(chk[5],'No open exceptions')}<td>${ok?'<span class="pill ok">Closed</span>':'<span class="pill warn">Open</span>'}</td></tr>`;
+  }).join('');
+  $('checklist').innerHTML=`<div class="hint" style="margin-top:0">${done} of ${rows.length} suppliers closed. A supplier is closed when every check is ✓ (— means it doesn't apply).</div><table><thead><tr><th>Supplier</th><th>Statement</th><th>Komet</th><th>Proofs</th><th>Bank</th><th>Komet total</th><th>Exceptions</th><th>Month</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+function renderActivity(){
+  const L=Object.values(state.log||{}).sort((a,b)=>a.ts<b.ts?1:-1).slice(0,200);
+  $('actLog').innerHTML = L.length ? `<table><thead><tr><th>When</th><th>What</th></tr></thead><tbody>${L.map(x=>`<tr><td>${esc(new Date(x.ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}</td><td class="wrap">${esc(x.text)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Every upload, edit, delete, resolve and restore is listed here.</div>';
+}
+function settingsDlg(id){
+  const s=state.suppliers[id]; if(!s) return;
+  openDlg(`<h2 id="dlgTitle">Settings · ${esc(s.name)}</h2>
+  <div class="row2"><div class="f"><label for="st-t">Payment terms (days)</label><input id="st-t" inputmode="numeric" value="${esc(s.terms??30)}"></div><div class="f"><label for="st-s">Track from (period start)</label><input id="st-s" type="date" value="${esc(s.startDate||'')}"></div></div>
+  <div class="f"><label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px;text-transform:none;letter-spacing:0"><input type="checkbox" id="st-e" ${s.expect===false?'':'checked'}> Expect a statement every month</label></div>
+  <p class="hint">Komet and payment lines dated before the start date are ignored, so older history doesn't show up as errors. Statements always count in full.</p>
+  <div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Save</button></div>`, async()=>{
+    const terms=parseInt($('st-t').value,10); if(!(terms>=0&&terms<=365)){ toast('Terms must be between 0 and 365 days.'); return false; }
+    await patch('suppliers', id, {terms, startDate:$('st-s').value||'', expect:$('st-e').checked}); logAct(`Changed settings for ${s.name}: ${terms} day terms${$('st-s').value?', tracking from '+$('st-s').value:''}`); toast('Settings saved');
+  });
+}
+function addSupplierDlg(){
+  openDlg(`<h2 id="dlgTitle">Add supplier</h2><div class="f"><label for="as-n">Name</label><input id="as-n" required placeholder="e.g. Golden Flowers"></div><div class="f"><label for="as-t">Payment terms (days)</label><input id="as-t" inputmode="numeric" value="30"></div><div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Add</button></div>`, async()=>{
+    const name=$('as-n').value.trim(); if(!name){ toast('Type the supplier name.'); return false; }
+    const ex=matchSupplier(name); if(ex && nname(state.suppliers[ex].name)===nname(name)){ toast(`${state.suppliers[ex].name} already exists.`); return false; }
+    const id=slug(name); await put('suppliers', id, {name, aliases:[], terms:parseInt($('as-t').value,10)||30, expect:true, createdAt:new Date().toISOString()}); logAct('Added supplier '+name); toast('Supplier added');
+  });
 }
 
 /* ================= ledger views (ported from Surandina Bloom-Line) ================= */
@@ -865,18 +950,18 @@ function scrub(e){
 $('chart').addEventListener('pointermove',scrub); $('chart').addEventListener('pointerdown',scrub);
 $('chart').addEventListener('pointerleave',()=>{ const h=$('xh'); if(h){ h.style.display='none'; $('xr').textContent='Hover or drag across the trace to read the balance on any date.'; } });
 
-function rowKeyOf(r){ const l=r.k||r.s||r.p; return l ? `${l.doc}|${l.ix}` : ''; }
+function rowKeyOf(r){ const l=r.p||r.k||r.s||r.b; return l ? `${l.doc}|${l.ix}` : ''; }
 function invTable(rows, sortable, withSup){
   const arrow = invSort==='asc'?' ▲':' ▼';
   return `<table><thead><tr><th ${sortable?'data-sort="date" title="Click to reverse order"':''}>Date${sortable?arrow:''}</th>${withSup?'<th>Supplier</th>':''}<th>Invoice</th><th class="hide-sm">AWB</th><th class="hide-sm">Sources</th><th class="num">Amount</th><th class="num hide-sm">Paid</th><th class="num">Open</th><th>Status</th></tr></thead><tbody>`+
-    rows.map((i,ix)=>`<tr data-row="${esc(rowKeyOf(i))}" tabindex="0" style="--i:${Math.min(ix,26)}"><td>${dshow(i.d)}</td>${withSup?`<td class="wrap" style="min-width:120px">${esc(supName(i.sid))}</td>`:''}<td>${esc(i.ref)}${i.t==='cr'?' <span class="pill res">credit</span>':''}</td><td class="hide-sm">${esc(i.awb)}</td><td class="hide-sm"><span class="src S${i.s?'':' off'}">S</span><span class="src K${i.k?'':' off'}">K</span></td><td class="num">${money(i.sign*i.amt)}</td><td class="num hide-sm">${i.t==='inv'?money(i.paid):'—'}</td><td class="num">${i.t==='inv'?money(i.open):'—'}</td><td>${i.t==='inv'?`<span class="pill ${i.status}">${i.status}</span>`:'<span class="pill res">Credit</span>'}</td></tr>`).join('')+`</tbody></table>`;
+    rows.map((i,ix)=>`<tr data-row="${esc(rowKeyOf(i))}" tabindex="0" style="--i:${Math.min(ix,26)}"><td>${dshow(i.d)}</td>${withSup?`<td>${esc(supName(i.sid))}</td>`:''}<td>${esc(i.ref)}${i.t==='cr'?' <span class="pill res">credit</span>':''}</td><td class="hide-sm">${esc(i.awb)}</td><td class="hide-sm"><span class="src S${i.s?'':' off'}">S</span><span class="src K${i.k?'':' off'}">K</span></td><td class="num">${money(i.sign*i.amt)}</td><td class="num hide-sm">${i.t==='inv'?money(i.paid):'—'}</td><td class="num">${i.t==='inv'?money(i.open):'—'}</td><td>${i.t==='inv'?`<span class="pill ${i.status}">${i.status}</span>`:'<span class="pill res">Credit</span>'}</td></tr>`).join('')+`</tbody></table>`;
 }
 function renderOpen(){
   const open=[]; CM.models.forEach(m=>m.open.forEach(i=>open.push(i)));
   open.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
   $('openTbl').innerHTML = open.length ? invTable(open.slice(0,15),false,true) + (open.length>15?`<div class="hint">Showing the oldest 15 of ${open.length}. See 04 Invoices for all.</div>`:'') : '<div class="empty">No open invoices.</div>';
 }
-let invFilter='all', invSort='desc';
+let invFilter='all', invSort='desc', invLimit=300;
 function renderInvoices(){
   let rows=[]; pickModels($('invSup').value).forEach(m=>rows.push(...m.rows));
   const yrs=[...new Set(rows.map(i=>(i.d||'').slice(0,4)).filter(Boolean))].sort().reverse();
@@ -890,14 +975,16 @@ function renderInvoices(){
   const q=$('q').value.trim().toLowerCase(), qd=q.replace(/\D/g,'');
   if(q) rows=rows.filter(i=>String(i.ref).toLowerCase().includes(q)||String(i.awb).toLowerCase().includes(q)||(qd.length>=4&&String(i.awb).replace(/\D/g,'').includes(qd)));
   const tot=rows.reduce((a,i)=>a+(i.t==='inv'?i.open:0),0);
-  $('invTbl').innerHTML = rows.length ? invTable(rows,true,!$('invSup').value)+`<div class="hint">${rows.length} line${rows.length>1?'s':''} · ${money(tot)} open · tap a row to edit</div>` : '<div class="empty">No invoices match.</div>';
+  const lim=invLimit, shown=rows.slice(0,lim);
+  $('invTbl').innerHTML = rows.length ? invTable(shown,true,!$('invSup').value)+`<div class="toolbar" style="margin-top:6px"><span class="hint" style="margin:0">${rows.length} line${rows.length>1?'s':''} · ${money(tot)} open · tap a row to edit${rows.length>lim?` · showing ${lim}`:''}</span>${rows.length>lim?'<button class="small ghost" type="button" id="invMore">Show 300 more</button>':''}</div>` : '<div class="empty">No invoices match.</div>';
+  const mb=$('invMore'); if(mb) mb.onclick=()=>{ invLimit+=300; renderInvoices(); };
 }
 function renderPayments(){
   let rows=[]; pickModels($('paySup').value).forEach(m=>rows.push(...m.pays));
   rows.sort((a,b)=>a.d<b.d?1:-1);
   const withSup=!$('paySup').value;
   $('payTbl').innerHTML = rows.length ? `<table><thead><tr><th>Date</th>${withSup?'<th>Supplier</th>':''}<th class="num">Amount</th><th class="hide-sm">Method</th><th>Settles</th><th>Bank</th><th class="hide-sm">Sources</th><th class="hide-sm">Reference</th></tr></thead><tbody>`+
-    rows.map((p,ix)=>`<tr data-row="${esc(rowKeyOf(p))}" tabindex="0" style="--i:${Math.min(ix,26)}"><td>${dshow(p.d)}</td>${withSup?`<td class="wrap" style="min-width:120px">${esc(supName(p.sid))}</td>`:''}<td class="num">${money(p.amt)}</td><td class="hide-sm">${esc(p.method||'—')}</td><td class="wrap">${esc(p.cov?.text||'—')} ${p.cov?`<span class="pill ${p.cov.result}">${p.cov.result}</span>`:''}</td><td>${p.verified?'<span class="pill Verified">✓ Verified</span>':'<span class="pill Unverified">Not yet</span>'}</td><td class="hide-sm"><span class="src P${p.p?'':' off'}">P</span><span class="src K${p.k?'':' off'}">K</span><span class="src S${p.s?'':' off'}">S</span></td><td class="hide-sm">${esc(p.ref)}</td></tr>`).join('')+`</tbody></table>`
+    rows.map((p,ix)=>`<tr data-row="${esc(rowKeyOf(p))}" tabindex="0" style="--i:${Math.min(ix,26)}"><td>${dshow(p.d)}</td>${withSup?`<td class="wrap" style="min-width:120px">${esc(supName(p.sid))}</td>`:''}<td class="num">${money(p.amt)}</td><td class="hide-sm">${esc(p.method||'—')}</td><td class="wrap">${esc(p.cov?.text||'—')} ${p.cov?`<span class="pill ${p.cov.result}">${p.cov.result}</span>`:''}</td><td>${p.verified?'<span class="pill Verified">✓ Verified</span>':'<span class="pill Unverified">Not yet</span>'}</td><td class="hide-sm"><span class="src P${p.p?'':' off'}">P</span><span class="src K${p.k?'':' off'}">K</span><span class="src S${p.s?'':' off'}">S</span><span class="src B${p.b?'':' off'}">B</span></td><td class="hide-sm">${esc(p.ref)}</td></tr>`).join('')+`</tbody></table>`
     : `<div class="empty">No payments yet. Use <b>+ Record payment</b> or drop proofs of payment on the P bay.</div>`;
 }
 let pendingImport=null;
@@ -909,6 +996,7 @@ function renderReconcile(){
     const farmC = over!=null ? C(over) : (m.hasS ? m.stmt : null);
     let h=`<div class="kv"><span>Balance per this tracker (reconciled)</span><span class="big">${money(m.rec)}</span><label for="farmBal">Balance per farm statement${m.g.cutoff&&over==null?' ('+dshow(m.g.cutoff)+')':''}</label><span><input id="farmBal" inputmode="decimal" value="${farmC==null?'':(farmC/100).toFixed(2)}" placeholder="enter balance" style="width:140px;text-align:right"></span>`;
     if(farmC!=null){ const diff=m.rec-farmC; h+=`<span>Difference</span><span class="big" style="color:${diff===0?'var(--ok)':'var(--bad)'}">${diff===0?'✓ ':''}${smoney(diff)}</span>`; }
+    if(m.g.kClosing!=null){ const kd=m.komet-m.g.kClosing; h+=`<span>Komet lines vs Komet report total (${dshow(m.g.kClosingDate)})</span><span class="big" style="color:${kd===0?'var(--ok)':'var(--bad)'}">${kd===0?'✓ ':''}${smoney(kd)}</span>`; }
     h+=`</div><div class="hint">${over!=null?'Using the balance you typed. Clear the box to go back to the uploaded statement.':'Filled from the latest uploaded statement. Type a newer figure from the farm to compare against it.'} Any difference is explained line by line on 03 Three-way match.</div>`;
     $('tie').innerHTML=h;
     const vp=m.pays.filter(p=>p.verified), up=m.pays.filter(p=>!p.verified);
@@ -934,7 +1022,7 @@ async function replaceAll(next){
 }
 async function applyImport(){
   const snap=JSON.parse(JSON.stringify(state)), next=pendingImport; pendingImport=null;
-  try{ await replaceAll(next); toast('Backup restored', async()=>{ await replaceAll(snap); toast('Restore undone'); }); }
+  try{ await replaceAll(next); logAct('Restored from backup'); toast('Backup restored', async()=>{ await replaceAll(snap); toast('Restore undone'); }); }
   catch(e){ toast('The restore did not finish. Try again.'); }
   render();
 }
@@ -1012,6 +1100,7 @@ async function sheetExtract(file){
 const KIND_GUIDE = {
   statement:`This is a SUPPLIER ACCOUNT STATEMENT that a flower farm or supplier sent to Tropical Blooms (the customer). List every invoice, credit note/memo and payment row it shows. "closing_balance" is the balance due/total owed shown on the statement (null if not shown). Skip subtotal, aging-bucket and page-total rows. If the statement has an opening/previous balance row, put it in a line with type "invoice", ref "OPENING", and the opening amount.`,
   komet:`This is an export from KometSales, Tropical Blooms' ERP: vendor bills, purchases, AP aging or vendor payments. It may include many vendors; set "vendor" on every line from the vendor/farm/supplier column. For "ref" use the vendor's invoice number column when there is one (often "Vendor Invoice", "Invoice #", "Factura"), not Komet's internal PO or bill id; put the internal id in "note". Bills are "invoice", vendor credits are "credit", vendor payments are "payment".`,
+  bank:`This is a BANK STATEMENT or bank activity export of Tropical Blooms Inc. Extract ONLY outgoing payments (debits: wires, ACH, checks, Zelle) made to flower farms, freight agents or other suppliers. Skip deposits, card purchases, bank fees, payroll, taxes, loan payments and transfers between Tropical Blooms' own accounts. "vendor" is the payee/beneficiary as written. Every line has type "payment". "ref" is the bank reference, Fed/trace or check number. "date" is the posting date. doc_date is the statement end date.`,
   payment:`This is a PROOF OF PAYMENT from Tropical Blooms to a supplier: a wire/ACH confirmation, check copy, Zelle or bank screenshot, or a remittance. Usually one payment. "vendor" is the beneficiary/payee. "ref" is the confirmation, Fed reference, trace or check number. Put invoice numbers mentioned in the memo/remittance in "applies_to". Date is the payment/value date. Ignore fees unless they are a separate payment to the supplier.`
 };
 function buildPrompt(kind, text, part, of, known){
@@ -1024,8 +1113,9 @@ Rules:
 - Use the exact invoice/credit/payment number as printed for "ref". Put an air waybill number (11 digits, like 729-12345678) in "awb" when shown.
 - Only include rows really present in the text. Never invent rows or totals.
 ${of>1?`- This is part ${part} of ${of} of one document. Extract only the rows in this part. Give supplier/doc_date/closing_balance only if they appear in this part.`:''}
+- "detected_type" is what this document really is: a supplier statement, a Komet export, a proof of payment, a bank statement, a single invoice, or other.
 Answer with ONLY a JSON object, no other text:
-{"supplier": string|null, "doc_date": "YYYY-MM-DD"|null, "closing_balance": number|null, "lines": [{"vendor": string, "type": "invoice"|"credit"|"payment", "date": "YYYY-MM-DD", "ref": string, "awb": string, "amount": number, "applies_to": [string], "method": string, "note": string}]}
+{"detected_type": "statement"|"komet"|"payment"|"bank"|"invoice"|"other", "supplier": string|null, "doc_date": "YYYY-MM-DD"|null, "closing_balance": number|null, "lines": [{"vendor": string, "type": "invoice"|"credit"|"payment", "date": "YYYY-MM-DD", "ref": string, "awb": string, "amount": number, "applies_to": [string], "method": string, "note": string}]}
 
 DOCUMENT TEXT:
 ${text}`;
@@ -1052,6 +1142,7 @@ async function aiParse(rv, text, images){
     const j = await caps.sample.json(prompt, opts);
     if(!j||typeof j!=='object') throw {code:'bad_json', message:'Claude did not return the expected data.'};
     merged.supplier = merged.supplier || j.supplier || null;
+    merged.detected = merged.detected || j.detected_type || null;
     merged.doc_date = merged.doc_date || j.doc_date || null;
     if(j.closing_balance!=null && !isNaN(parseFloat(j.closing_balance))) merged.closing_balance = j.closing_balance;
     (Array.isArray(j.lines)?j.lines:[]).forEach(l=>merged.lines.push(l));
@@ -1103,9 +1194,14 @@ async function intake(files, kind){
     process(rv);
   }
 }
+async function fileHash(f){ try{ const b=await crypto.subtle.digest('SHA-256', await f.arrayBuffer()); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }catch(e){ return ''; } }
+const KIND_OF_DETECTED={statement:'statement',komet:'komet',payment:'payment',bank:'bank'};
 async function process(rv){
   const f=rv.file, e=extOf(f);
   try{
+    rv.hash = await fileHash(f);
+    const same = rv.hash && Object.values(state.docs).find(d=>d.hash===rv.hash);
+    if(same){ rv.dupFile = same; rv.log(`This exact file was already saved on ${(same.uploadedAt||'').slice(0,10)} as "${same.fileName}". Every line is unticked; save only if you really mean to add it twice.`); }
     let text='', images=[];
     if(e==='pdf'||f.type==='application/pdf'){ rv.log('Opening PDF…'); const x=await pdfExtract(await f.arrayBuffer(), rv); text=x.text; images=x.images; rv.log(`${x.pages} page${x.pages===1?'':'s'} opened.`); }
     else if(/^image\//.test(f.type)||['png','jpg','jpeg','webp','heic','gif'].includes(e)){ images=[f]; rv.log('Photo or screenshot: reading the image.'); }
@@ -1125,11 +1221,15 @@ async function process(rv){
     if(!parsed){ parsed={lines:[]}; rv.log('Add the lines by hand below, then save.'); }
     const fallbackVendor = rv.hint ? supName(rv.hint) : (parsed.supplier||'');
     rv.lines = (parsed.lines||[]).map(l=>normLine(l, fallbackVendor)).filter(l=>C(l.a)>0);
+    if(rv.kind==='payment'||rv.kind==='bank') rv.lines.forEach(l=>{ l.t='pay'; });
+    const det = KIND_OF_DETECTED[parsed.detected];
+    if(parsed.detected && parsed.detected!==rv.kind){ rv.wrongBay = det || parsed.detected; rv.log(`Heads up: this looks like ${det?'a '+KIND[det].label.toLowerCase():'a '+parsed.detected}, not a ${KIND[rv.kind].label.toLowerCase()}.`); }
     if(rv.hint) rv.lines.forEach(l=>{ if(rv.kind!=='komet'||!l.vendor) l.vendor=supName(rv.hint); });
     rv.docDate = toISO(parsed.doc_date) || rv.lines.reduce((m,l)=>l.d>m?l.d:m,'');
     rv.closing = parsed.closing_balance!=null && parsed.closing_balance!=='' ? (C(parsed.closing_balance)/100).toFixed(2) : '';
     rv.supplierGuess = parsed.supplier||'';
     buildVmap(rv); markDups(rv);
+    if(rv.dupFile) rv.lines.forEach(l=>{ l.inc=false; });
     rv.log(`${rv.lines.length} line${rv.lines.length===1?'':'s'} found. Check them, then save.`);
     rv.stage='review';
   }catch(err){
@@ -1142,7 +1242,8 @@ async function process(rv){
 function buildVmap(rv){
   const names=[...new Set(rv.lines.map(l=>l.vendor||''))];
   if(!names.length) names.push(rv.supplierGuess||'');
-  names.forEach(n=>{ if(rv.vmap[n]==null) rv.vmap[n] = rv.hint || matchSupplier(n) || (n?'new':''); });
+  names.forEach(n=>{ if(rv.vmap[n]==null) rv.vmap[n] = rv.hint || matchSupplier(n) || (rv.kind==='bank' ? '' : (n?'new':'')); });
+  if(rv.kind==='bank') rv.lines.forEach(l=>{ if(!rv.vmap[l.vendor||'']) l.inc=false; });
 }
 function vendorSid(rv, l){ return rv.vmap[l.vendor||''] ?? ''; }
 function markDups(rv){
@@ -1161,18 +1262,21 @@ function renderReviews(){
   if(!reviews.length){ box.innerHTML=`<div class="card"><div class="empty">Files you drop in are read here. You check every line before anything is saved, and each saved file keeps a link to the original.</div></div>`; $('aiNote').textContent = caps.sample ? 'PDFs, photos and spreadsheets are read by Claude using your Claude usage. You confirm before the first read.' : ''; return; }
   $('aiNote').textContent = caps.sample ? 'PDFs, photos and spreadsheets are read by Claude using your Claude usage.' : '';
   const focus=document.activeElement && box.contains(document.activeElement) ? document.activeElement.id : null;
-  const supOpts = (sel)=>`<option value="">Choose supplier…</option>${Object.entries(state.suppliers).sort((a,b)=>a[1].name.localeCompare(b[1].name)).map(([id,s])=>`<option value="${esc(id)}" ${sel===id?'selected':''}>${esc(s.name)}</option>`).join('')}<option value="new" ${sel==='new'?'selected':''}>+ New supplier with this name</option>`;
+  const supOpts = (sel,bank)=>`<option value="">${bank?'Skip · not a supplier payment':'Choose supplier…'}</option>${Object.entries(state.suppliers).sort((a,b)=>a[1].name.localeCompare(b[1].name)).map(([id,s])=>`<option value="${esc(id)}" ${sel===id?'selected':''}>${esc(s.name)}</option>`).join('')}<option value="new" ${sel==='new'?'selected':''}>+ New supplier with this name</option>`;
   box.innerHTML = reviews.map(rv=>{
     const k=KIND[rv.kind];
     const head=`<div class="rv-h"><div><span class="src ${k.code}">${k.code}</span> <span class="fn">${esc(rv.fileName)}</span><div class="muted" style="font-size:12px">${esc(k.label)}</div></div><div class="toolbar" style="margin:0">${rv.stage==='reading'?`<span class="thinking">Reading</span><button class="small ghost" type="button" data-stop="${rv.id}">Stop</button>`:''}${rv.stage==='review'?`<button class="small ghost" type="button" data-discard="${rv.id}">Discard</button><button class="small primary" type="button" data-commit="${rv.id}" id="sv-${rv.id}">${saveLabel(rv)}</button>`:''}${rv.stage==='saving'?'<span class="thinking">Saving</span>':''}</div></div>`;
     const log=`<div class="log">${esc(rv.logs.join('\n'))}</div>`;
     if(rv.stage!=='review') return `<div class="card rv">${head}${log}</div>`;
     const vnames=Object.keys(rv.vmap);
-    const vmapH = `<div class="meta">${vnames.map((n,i)=>`<div class="f"><label for="vm-${rv.id}-${i}">${n?'Vendor “'+esc(n)+'”':'Supplier'}</label><select id="vm-${rv.id}-${i}" data-vm="${rv.id}" data-vname="${esc(n)}">${supOpts(rv.vmap[n])}</select></div>`).join('')}<div class="f"><label for="dd-${rv.id}">Document date</label><input id="dd-${rv.id}" type="date" data-rvf="${rv.id}" data-k="docDate" value="${esc(rv.docDate)}"></div>${rv.kind==='statement'?`<div class="f"><label for="cb-${rv.id}">Statement balance due</label><input id="cb-${rv.id}" inputmode="decimal" data-rvf="${rv.id}" data-k="closing" value="${esc(rv.closing)}" placeholder="optional"></div>`:''}</div>`;
+    const vmapH = `<div class="meta">${vnames.map((n,i)=>`<div class="f"><label for="vm-${rv.id}-${i}">${n?'Vendor “'+esc(n)+'”':'Supplier'}</label><select id="vm-${rv.id}-${i}" data-vm="${rv.id}" data-vname="${esc(n)}">${supOpts(rv.vmap[n], rv.kind==='bank')}</select></div>`).join('')}<div class="f"><label for="dd-${rv.id}">Document date</label><input id="dd-${rv.id}" type="date" data-rvf="${rv.id}" data-k="docDate" value="${esc(rv.docDate)}"></div>${rv.kind==='statement'||(rv.kind==='komet'&&vnames.length===1)?`<div class="f"><label for="cb-${rv.id}">${rv.kind==='statement'?'Statement balance due':'Komet report total for this vendor'}</label><input id="cb-${rv.id}" inputmode="decimal" data-rvf="${rv.id}" data-k="closing" value="${esc(rv.closing)}" placeholder="${rv.kind==='statement'?'from the statement':'optional · AP aging total'}"></div>`:''}</div>`;
+    const warnH = (rv.wrongBay && KIND[rv.wrongBay] ? `<div class="flag bad">This looks like a <b>${esc(KIND[rv.wrongBay].label.toLowerCase())}</b>, but it was dropped on the ${esc(k.label)} box. <button class="small" type="button" data-rv="${rv.id}" data-switchkind="${rv.wrongBay}">Treat it as ${esc(KIND[rv.wrongBay].label)}</button></div>` : rv.wrongBay ? `<div class="flag">This may not be a ${esc(k.label.toLowerCase())} (it looks like: ${esc(rv.wrongBay)}). Check before saving.</div>` : '')
+      + (rv.dupFile ? `<div class="flag bad">This exact file was already saved on ${esc((rv.dupFile.uploadedAt||'').slice(0,10))}. Every line is unticked.</div>` : '')
+      + (rv.kind==='bank' ? `<div class="flag info">Only payments mapped to a supplier are saved. Anything set to "Skip" (rent, payroll, fees) stays out of the ledger.</div>` : '');
     const dupN=rv.lines.filter(l=>l.dup).length;
     const lines=`<div class="scroll"><table><thead><tr><th>Use</th><th>Type</th><th>Date</th><th>Ref #</th><th class="num">Amount</th><th class="hide-sm">AWB</th>${vnames.length>1?'<th>Vendor</th>':''}<th class="hide-sm">Applies to</th><th></th></tr></thead><tbody>${rv.lines.map((l,i)=>`<tr class="${l.dup?'dup':''}"><td><input type="checkbox" id="u-${rv.id}-${i}" data-l="${rv.id}|${i}|inc" ${l.inc?'checked':''} aria-label="Use line"></td><td><select id="t-${rv.id}-${i}" data-l="${rv.id}|${i}|t" aria-label="Type"><option value="inv" ${l.t==='inv'?'selected':''}>Invoice</option><option value="cr" ${l.t==='cr'?'selected':''}>Credit</option><option value="pay" ${l.t==='pay'?'selected':''}>Payment</option></select></td><td><input type="date" id="d-${rv.id}-${i}" data-l="${rv.id}|${i}|d" value="${esc(l.d)}" aria-label="Date" style="min-width:130px"></td><td><input id="r-${rv.id}-${i}" data-l="${rv.id}|${i}|r" value="${esc(l.r)}" aria-label="Reference" style="min-width:90px"></td><td><input id="a-${rv.id}-${i}" data-l="${rv.id}|${i}|a" value="${esc(l.a)}" inputmode="decimal" aria-label="Amount" style="min-width:90px;text-align:right"></td><td class="hide-sm"><input id="w-${rv.id}-${i}" data-l="${rv.id}|${i}|awb" value="${esc(l.awb)}" aria-label="AWB" style="min-width:110px"></td>${vnames.length>1?`<td class="wrap" style="min-width:110px">${esc(l.vendor)}</td>`:''}<td class="hide-sm"><input id="p-${rv.id}-${i}" data-l="${rv.id}|${i}|ap" value="${esc(l.ap.join(', '))}" aria-label="Applies to invoices" style="min-width:90px"></td><td>${l.dup?'<span class="pill res" title="Already in the ledger from an earlier upload">dup</span>':''}</td></tr>`).join('')}</tbody></table></div>`;
     const foot=`<div class="toolbar" style="margin:8px 0 0"><button class="small" type="button" data-addl="${rv.id}">+ Add line</button><span class="status" id="tot-${rv.id}">${totText(rv)}</span>${dupN?`<span class="status">${dupN} line${dupN===1?' was':'s were'} already saved from an earlier file and ${dupN===1?'is':'are'} unticked.</span>`:''}</div>`;
-    return `<div class="card rv">${head}${log}<div style="margin-top:10px">${vmapH}${lines}${foot}</div></div>`;
+    return `<div class="card rv">${head}${log}<div style="margin-top:10px">${warnH}${vmapH}${lines}${foot}</div></div>`;
   }).join('');
   if(focus){ const el=$(focus); if(el) el.focus(); }
 }
@@ -1180,14 +1284,18 @@ function saveLabel(rv){ const n=rv.lines.filter(l=>l.inc).length; return `Save $
 function totText(rv){
   const tot=rv.lines.filter(l=>l.inc).reduce((a,l)=>a+(l.t==='inv'?C(l.a):-C(l.a)),0);
   const cb=rv.closing!==''&&rv.closing!=null ? C(rv.closing) : null;
-  return `Net of ticked lines: ${money(tot)}` + (cb!=null ? ` · statement says ${money(cb)}${cb!==tot?' <span class="delta">(Δ '+smoney(tot-cb)+')</span>':' ✓'}` : '');
+  return `Net of ticked lines: ${money(tot)}` + (cb!=null ? ` · ${rv.kind==='komet'?'Komet report says':'statement says'} ${money(cb)}${cb!==tot?' <span class="delta">(Δ '+smoney(tot-cb)+')</span>':' ✓'}` : '');
 }
 function refreshRvTotals(rv){ const t=$('tot-'+rv.id); if(t) t.innerHTML=totText(rv); const s=$('sv-'+rv.id); if(s) s.textContent=saveLabel(rv); }
 async function commit(rv){
   const inc=rv.lines.filter(l=>l.inc);
   if(!inc.length){ toast('Tick at least one line to save.'); return; }
   const missing=inc.filter(l=>!vendorSid(rv,l));
-  if(missing.length){ toast('Choose a supplier for every vendor name first.'); return; }
+  if(missing.length){ toast(rv.kind==='bank'?'Map every ticked line to a supplier, or untick it.':'Choose a supplier for every vendor name first.'); return; }
+  if(rv.kind==='statement' && rv.closing!=='' && !rv.ackTie){
+    const net=inc.reduce((a,l)=>a+(l.t==='inv'?C(l.a):-C(l.a)),0), cb=C(rv.closing);
+    if(net!==cb){ rv.ackTie=true; toast(`Ticked lines total ${money(net)} but the statement says ${money(cb)} (Δ ${smoney(net-cb)}). A line may be missing or misread. Press Save again to save anyway.`); return; }
+  }
   const bad=inc.filter(l=>!isISO(l.d)||C(l.a)<=0);
   if(bad.length){ toast(`${bad.length} ticked line${bad.length===1?' needs':'s need'} a date and an amount.`); return; }
   rv.stage='saving'; renderReviews();
@@ -1206,13 +1314,14 @@ async function commit(rv){
     }
     const lines=inc.map(l=>({s:sidOf[l.vendor||'']||rv.vmap[l.vendor||''], t:l.t, d:l.d, r:l.r, awb:l.awb, a:+(C(l.a)/100).toFixed(2), ap:l.ap, m:l.m, n:l.n}));
     const sids=[...new Set(lines.map(l=>l.s))];
-    const closing={}; if(rv.kind==='statement' && rv.closing!=='' && sids.length===1) closing[sids[0]] = +(C(rv.closing)/100).toFixed(2);
-    const base={kind:rv.kind, fileName:rv.fileName, assetId, docDate:rv.docDate||'', closing, uploadedAt:new Date().toISOString()};
+    const closing={}; if((rv.kind==='statement'||rv.kind==='komet') && rv.closing!=='' && sids.length===1) closing[sids[0]] = +(C(rv.closing)/100).toFixed(2);
+    const base={kind:rv.kind, fileName:rv.fileName, assetId, docDate:rv.docDate||'', closing, uploadedAt:new Date().toISOString(), hash:rv.hash||''};
     const id=newId('d');
     for(let i=0;i<lines.length;i+=800){ await put('docs', i?`${id}-p${i/800+1}`:id, Object.assign({}, base, {lines:lines.slice(i,i+800), part:i/800+1, batch:id})); }
     reviews=reviews.filter(r=>r!==rv);
     curSup=sids[0]||curSup;
     toast(`Saved ${lines.length} line${lines.length===1?'':'s'} from ${rv.fileName}.`);
+    logAct(`Uploaded ${KIND[rv.kind].label.toLowerCase()} "${rv.fileName}" · ${lines.length} lines · ${sids.map(supName).join(', ')}`);
     render();
   }catch(err){ rv.stage='review'; rv.log('Save failed: '+(err&&err.code||err&&err.message||'error')+'. Nothing was lost; try Save again.'); }
 }
@@ -1289,7 +1398,7 @@ function openEntry(t){
     if(warns.length && !ack){ ack=true; $('ml-warn').innerHTML=`<div class="flag" style="margin-top:8px">${warns.join('<br>')}<br>Press save again to keep it as entered.</div>`; return false; }
     const l=await readLineForm(); if(!l) return false;
     await put('docs', newId('d'), {kind:k, manual:true, fileName:'Manual entry', assetId:null, docDate:l.d, closing:{}, uploadedAt:new Date().toISOString(), lines:[l], part:1});
-    curSup=l.s; toast(l.t==='pay'?'Payment recorded':'Invoice added');
+    curSup=l.s; toast(l.t==='pay'?'Payment recorded':'Invoice added'); logAct(`${l.t==='pay'?'Recorded payment':'Added '+TYPE_LABEL[l.t].toLowerCase()} ${l.r?'#'+l.r+' ':''}${money(C(l.a))} · ${supName(l.s)} · ${KIND[k].label}`);
   });
   wireLineForm(0);
 }
@@ -1301,20 +1410,23 @@ function editLine(docId, ix){
     const warns=entryWarnings(d.kind, docId, ix);
     if(warns.length && !ack){ ack=true; $('ml-warn').innerHTML=`<div class="flag" style="margin-top:8px">${warns.join('<br>')}<br>Press Save again to keep it as entered.</div>`; return false; }
     const nl=await readLineForm(); if(!nl) return false;
-    const lines=[...d.lines]; lines[ix]=nl; await patch('docs', docId, {lines}); toast('Changes saved');
+    const lines=[...d.lines]; lines[ix]=nl; await patch('docs', docId, {lines}); toast('Changes saved'); logAct(`Edited ${TYPE_LABEL[l.t].toLowerCase()} ${l.r?'#'+l.r:''} ${money(C(l.a))} → ${money(C(nl.a))} · ${supName(nl.s)}`);
   });
   wireLineForm(l.t==='pay'?C(l.a):0);
   armDelete($('ml-del'), async()=>{
     const snap=JSON.parse(JSON.stringify(d)); dlg.close();
     const lines=[...d.lines]; lines.splice(ix,1);
     if(!lines.length) await del('docs', docId); else await patch('docs', docId, {lines});
+    logAct(`Deleted ${TYPE_LABEL[l.t].toLowerCase()} ${l.r?'#'+l.r:''} ${money(C(l.a))} · ${supName(l.s)}`);
     toast(`${TYPE_LABEL[l.t]} deleted`, async()=>{ await put('docs', docId, snap); toast('Restored'); });
   });
 }
 function resolveDlg(resId, lb){
-  openDlg(`<h2 id="dlgTitle">Resolve · ${esc(lb)}</h2><p class="hint" style="margin-top:0">Mark this as explained. It stops counting as an exception but stays visible under All and Matched.</p><div class="f"><label for="rs-n">What explains it</label><input id="rs-n" placeholder="e.g. Farm confirmed credit CM-90 on next statement" required></div><div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Resolve</button></div>`, async ()=>{
-    const note=$('rs-n').value.trim(); if(!note){ toast('Add a short note so the next person knows why.'); return false; }
-    await put('res', resId, {note, at:new Date().toISOString()}); toast('Marked resolved.');
+  openDlg(`<h2 id="dlgTitle">Resolve · ${esc(lb)}</h2><p class="hint" style="margin-top:0">Mark this as explained. It stops counting as an exception but stays visible under All and Matched.</p><div class="f"><label for="rs-r">Reason</label><select id="rs-r"><option value="">Choose a reason…</option>${RES_REASONS.map(r=>`<option>${esc(r)}</option>`).join('')}</select></div><div class="f"><label for="rs-n">Evidence or note</label><input id="rs-n" placeholder="e.g. Farm confirmed credit CM-90 on next statement" required></div><div class="dlg-f"><button value="cancel" type="submit">Cancel</button><button class="primary" value="ok" type="submit">Resolve</button></div>`, async ()=>{
+    const reason=$('rs-r').value, note=$('rs-n').value.trim();
+    if(!reason){ toast('Pick a reason.'); return false; }
+    if(!note){ toast('Add a short note or document reference so the next person knows why.'); return false; }
+    await put('res', resId, {note:reason+' · '+note, reason, at:new Date().toISOString()}); logAct(`Resolved "${lb}" · ${reason} · ${note}`); toast('Marked resolved.');
   });
 }
 function renameDlg(id){
@@ -1340,13 +1452,14 @@ function mergeDlg(id){
     const t=state.suppliers[to];
     await patch('suppliers', to, {aliases:[...new Set([...(t.aliases||[]), s.name, ...(s.aliases||[])])]});
     await del('suppliers', id);
-    curSup=to; toast('Merged.');
+    curSup=to; toast('Merged.'); logAct(`Merged ${s.name} into ${t.name}`);
   });
 }
 function deleteDocDlg(id){
   const d=state.docs[id];
   openDlg(`<h2 id="dlgTitle">Delete this file?</h2><p>${esc(d.fileName||'Manual entry')} and its ${(d.lines||[]).length} line${(d.lines||[]).length===1?'':'s'} will be removed from the ledger. This can't be undone.</p><div class="dlg-f"><button value="cancel" type="submit">Keep it</button><button class="danger" value="ok" type="submit">Delete</button></div>`, async ()=>{
     const snap=JSON.parse(JSON.stringify(d));
+    logAct(`Deleted file "${d.fileName||'Manual entry'}" (${(d.lines||[]).length} lines)`);
     await del('docs', id); toast('File deleted.', async()=>{ await put('docs', id, snap); toast('File restored'); });
   });
 }
@@ -1364,6 +1477,7 @@ function switchTab(name){
   curTab=name;
   document.querySelectorAll('.tab').forEach(t=>{ const on=t.dataset.tab===name; t.setAttribute('aria-selected',on); t.tabIndex=on?0:-1; });
   document.querySelectorAll('section[role=tabpanel]').forEach(s=>{ s.hidden = s.id!=='t-'+name; });
+  if(CM) (TAB_RENDER[name]||(()=>{}))();
   goEnter($('t-'+name));
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchTab(t.dataset.tab)));
@@ -1372,7 +1486,7 @@ $('btnPay').onclick=()=>openEntry('pay'); $('btnInv').onclick=()=>openEntry('inv
 $('supSel').onchange=e=>{ curSup=e.target.value; renderMatch(); };
 document.querySelectorAll('[data-mf]').forEach(b=>b.addEventListener('click',()=>{ mFilter=b.dataset.mf; document.querySelectorAll('[data-mf]').forEach(x=>x.setAttribute('aria-pressed', x===b)); renderMatch(); }));
 $('expMatch').onclick=()=>curSup&&exportCSV(curSup);
-['statement','komet','payment'].forEach(k=>{
+['statement','komet','payment','bank'].forEach(k=>{
   const bay=$('bay-'+k), inp=$('in-'+k);
   inp.addEventListener('change',()=>{ intake([...inp.files], k); inp.value=''; });
   bay.addEventListener('dragover',e=>{ e.preventDefault(); bay.classList.add('over'); });
@@ -1387,16 +1501,19 @@ document.addEventListener('click',e=>{
   if(t.matches('tr[data-row]')){ const [d,ix]=(ds.row||'').split('|'); if(d) editLine(d,+ix); return; }
   if(ds.edit){ e.preventDefault(); const [d,ix]=ds.edit.split('|'); editLine(d,+ix); return; }
   if(ds.res){ resolveDlg(ds.res, ds.lb); return; }
-  if(ds.unres){ del('res', ds.unres).then(()=>toast('Reopened.')); return; }
+  if(ds.unres){ del('res', ds.unres).then(()=>{ toast('Reopened.'); logAct('Reopened a resolved item'); }); return; }
   if(ds.act==='clear-ex'){ clearExamplesDlg(); return; }
   if(ds.deldoc){ deleteDocDlg(ds.deldoc); return; }
   if(ds.rename){ renameDlg(ds.rename); return; }
+  if(ds.settings){ settingsDlg(ds.settings); return; }
+  if(t.id==='btnAddSup'){ addSupplierDlg(); return; }
   if(ds.merge){ mergeDlg(ds.merge); return; }
-  const rv=reviews.find(r=>r.id===(ds.stop||ds.discard||ds.commit||ds.addl));
+  const rv=reviews.find(r=>r.id===(ds.stop||ds.discard||ds.commit||ds.addl||ds.rv));
   if(rv){
     if(ds.stop){ rv.cancelled=true; rv.ctrl&&rv.ctrl.abort(); }
     else if(ds.discard){ rv.cancelled=true; reviews=reviews.filter(r=>r!==rv); renderReviews(); renderHero(); }
     else if(ds.commit){ commit(rv); }
+    else if(ds.switchkind){ rv.kind=ds.switchkind; rv.wrongBay=null; if(rv.kind==='payment'||rv.kind==='bank') rv.lines.forEach(l=>{ l.t='pay'; }); rv.vmap={}; buildVmap(rv); markDups(rv); rv.log('Moved to '+KIND[rv.kind].label+'.'); renderReviews(); }
     else if(ds.addl){ const vn=Object.keys(rv.vmap)[0]||''; rv.lines.push({inc:true, vendor:vn, t:rv.kind==='payment'?'pay':'inv', d:rv.docDate||todayISO(), r:'', awb:'', a:'', ap:[], m:'', n:''}); renderReviews(); }
   }
 });
@@ -1411,7 +1528,7 @@ $('reviews').addEventListener('change',e=>{
   if(ds.l){ const [id,i,f]=ds.l.split('|'); const rv=reviews.find(r=>r.id===id); if(!rv) return; const l=rv.lines[+i];
     if(f==='inc') l.inc=el.checked; else if(f==='ap') l.ap=el.value.split(/[,;]/).map(x=>x.trim()).filter(Boolean); else l[f]=el.value;
     refreshRvTotals(rv); }
-  else if(ds.vm){ const rv=reviews.find(r=>r.id===ds.vm); if(!rv) return; rv.vmap[ds.vname]=el.value; markDups(rv); renderReviews(); }
+  else if(ds.vm){ const rv=reviews.find(r=>r.id===ds.vm); if(!rv) return; rv.vmap[ds.vname]=el.value; if(rv.kind==='bank') rv.lines.forEach(l=>{ if((l.vendor||'')===ds.vname) l.inc=!!el.value; }); markDups(rv); renderReviews(); }
   else if(ds.rvf){ const rv=reviews.find(r=>r.id===ds.rvf); if(!rv) return; rv[ds.k]=el.value; refreshRvTotals(rv); }
 });
 
@@ -1489,5 +1606,6 @@ function fxInit(){
   dlg.addEventListener('close',()=>bg.start());
   bg.start(); tickClock(); setInterval(tickClock,1000); bootInit();
 }
+addEventListener('beforeunload', e=>{ if(reviews.some(r=>r.stage==='review'||r.stage==='reading')){ e.preventDefault(); e.returnValue=''; } });
 fxInit(); init();
 </script>
