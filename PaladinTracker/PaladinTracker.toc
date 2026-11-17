@@ -1,0 +1,8 @@
+## Interface: 20505
+## Title: Paladin Tracker
+## Notes: Seal countdown bar and blessing timer icons for Paladins.
+## Author: you
+## Version: 1.0.0
+## SavedVariables: PaladinTrackerDB
+
+PaladinTracker.lua
