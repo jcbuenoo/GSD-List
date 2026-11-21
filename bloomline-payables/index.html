@@ -601,6 +601,13 @@ function supplierModel(sid){
   pK.filter(k=>!used.has(k)).forEach(k=>{ used.add(k); pays.push({p:null,k,s:best(pS,k)}); });
   pS.filter(s=>!used.has(s)).forEach(s=>{ used.add(s); pays.push({p:null,k:null,s}); });
   const pB=g.B; pays.forEach(r=>{ const base=r.p||r.k||r.s; r.b=best(pB,base,7); });
+  /* second pass: the same payment seen through a card or bank feed can post days later or with a fee/FX difference.
+     Pair a leftover bank debit with the one unpaired payment within ±3% ($5 min) and −2…+15 days, so it is counted once, not twice. */
+  const tolC=x=>Math.max(500, Math.round(Math.abs(x)*0.03));
+  pB.filter(b=>!used.has(b)).forEach(b=>{
+    const cand=pays.filter(r=>!r.b).filter(r=>{ const base=r.p||r.k||r.s; const dd=(b.d&&base.d)?(dms(b.d)-dms(base.d))/DAY:99; return Math.abs(b.c-base.c)<=tolC(base.c) && dd>=-2 && dd<=15; });
+    if(cand.length===1){ used.add(b); cand[0].b=b; cand[0].bFuzzy=true; }
+  });
   pB.filter(b=>!used.has(b)).forEach(b=>{ used.add(b); pays.push({p:null,k:null,s:null,b}); });
   const bankCut = latestBankDate();
   pays.forEach(r=>{ const b=r.p||r.k||r.s||r.b; r.t='pay'; r.d=b.d; r.amt=b.c; r.verified=!!r.b||[r.p,r.k,r.s].some(l=>l&&l.v); r.ambig=[r.k,r.s,r.b].some(l=>l&&l._amb); r.method=(r.p&&r.p.m)||(r.k&&r.k.m)||(r.s&&r.s.m)||(r.b&&r.b.m)||''; r.ref=(r.p&&r.p.r)||(r.k&&r.k.r)||(r.s&&r.s.r)||(r.b&&r.b.r)||''; r.ap=[...new Set([...(r.p?.ap||[]),...(r.k?.ap||[]),...(r.s?.ap||[])])]; r.alloc=[]; r.rowKey='P-'+r.d+'-'+r.amt+'-'+nref(r.ref); });
@@ -662,9 +669,20 @@ function supplierModel(sid){
     else if(r.k){ st= after(r.d)?'pend':'warn'; lb='No proof · off stmt'; act='Upload the proof of payment.'; }
     else { st='warn'; lb='Statement only'; act='The farm shows a payment you have no record of. Find the bank record and record it in Komet.'; }
     if(bankCut && !r.b && (r.p||r.k) && r.d && dms(r.d) <= dms(bankCut)-3*DAY){ st='bad'; lb='Not on bank'; act='Recorded as paid but no matching debit on the bank statement. Check the wire went out and was not returned or sent twice.'; }
+    if(r.bFuzzy){ const base=r.p||r.k||r.s; if(st!=='bad'){ st='warn'; lb+=' · bank differs'; } act=`Bank shows ${money(r.b.c)} on ${dshow(r.b.d)}; recorded ${money(base.c)} on ${dshow(base.d)}. Treated as the same payment (card fee, FX or posting delay), counted once. Confirm.`+(act?' '+act:''); }
     if(r.ambig && st==='ok'){ st='warn'; lb+=' · check pairing'; act='Another payment of the same amount is close in date. Confirm the references match.'; }
     r.st=st; r.lb=lb; r.act=act; r.impact=r.amt;
   });
+  /* double-payment check: a real double payment is two separate bank debits; two proofs with no bank behind them is usually one payment entered twice */
+  for(let i=0;i<pays.length;i++) for(let j=i+1;j<pays.length;j++){
+    const a=pays[i], b=pays[j]; if(a.amt!==b.amt || !a.d || !b.d) continue;
+    const dd=Math.abs(dms(a.d)-dms(b.d))/DAY;
+    const apA=a.ap.map(nref), apB=b.ap.map(nref); if(apA.length && apB.length && !apA.some(x=>apB.includes(x))) continue; // paying different named invoices
+    let lb=null, act='';
+    if(a.b && b.b && a.b!==b.b && dd<=30){ lb='Possible double payment'; act=`Two separate bank debits of ${money(a.amt)} (${dshow(a.d)} and ${dshow(b.d)}). If only one bill was due, ask the farm to credit or refund one.`; }
+    else if(a.p && b.p && !a.b && !b.b && dd<=5){ lb='Possible duplicate entry'; act=`Two proofs of ${money(a.amt)} (${dshow(a.d)} and ${dshow(b.d)}) and no bank debit yet. If it is one payment entered twice (for example a card slip and a bank screenshot), delete one.`; }
+    if(lb) [a,b].forEach(r=>{ if(r.st!=='bad') r.st='warn'; r.lb=lb; r.act=act; r.dupPay=true; });
+  }
   [...rows,...pays].forEach(r=>{ const rr=res[rKey(r.rowKey)]; r.resId=rKey(r.rowKey); if(rr && r.st!=='ok'){ r.resolved=rr; r.st0=r.st; r.st='res'; } });
   /* ---- balances & bridge ---- */
   const sum=(arr,fn)=>arr.reduce((a,x)=>a+fn(x),0);
@@ -1377,7 +1395,7 @@ function openDlg(html, onSubmit){
   frm.onsubmit=async ev=>{ ev.preventDefault(); const sub=ev.submitter; if(sub&&sub.value==='cancel'){ dlg.close(); return; } try{ const r=await onSubmit(sub&&sub.value); if(r!==false) dlg.close(); }catch(e){ toast('That did not save. Try again.'); } };
 }
 function supOptions(sel){ return Object.entries(state.suppliers).sort((a,b)=>a[1].name.localeCompare(b[1].name)).map(([id,s])=>`<option value="${esc(id)}" ${id===sel?'selected':''}>${esc(s.name)}</option>`).join(''); }
-const METHODS=['Wire transfer','ACH','Check','Zelle','Card','Other','Not specified'];
+const METHODS=['Wire transfer','ACH','Check','Zelle','Debit card','Credit card','Card','Other','Not specified'];
 function lineForm(l, withSource, kind){
   const isPay=l.t==='pay';
   return `${withSource?`<div class="f"><label for="ml-k">Source</label><select id="ml-k"><option value="payment" ${kind==='payment'?'selected':''}>Proof of payment (P)</option><option value="komet" ${kind==='komet'?'selected':''}>KometSales (K)</option><option value="statement" ${kind==='statement'?'selected':''}>Supplier statement (S)</option></select></div>`:''}
