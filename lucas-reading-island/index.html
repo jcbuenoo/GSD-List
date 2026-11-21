@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ziggy's Reading Island</title>
+<title>Lucas Reading Island</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -209,6 +209,7 @@ h1,h2,h3{font-family:var(--display); margin:0; text-wrap:balance; letter-spacing
 .intro-card{
   display:flex; align-items:center; gap:18px; background:#fff; border-radius:var(--r-lg); padding:18px 30px;
   border:6px solid var(--sun); box-shadow:0 8px 0 #0000000f;
+  flex-wrap:wrap; justify-content:center; max-width:100%;
 }
 .intro-card .ltr{font-family:var(--read); font-weight:700; font-size:clamp(5rem, 22vw, 8rem); line-height:1}
 .intro-card .kw{display:flex; flex-direction:column; align-items:center; font-size:1.3rem; font-family:var(--display); font-weight:600}
@@ -276,6 +277,9 @@ h1,h2,h3{font-family:var(--display); margin:0; text-wrap:balance; letter-spacing
 .xpline{font-family:var(--display); font-weight:700; font-size:1.5rem; color:var(--berry)}
 .bigxp{width:min(100%, 360px); height:22px; background:#e9edf8; border-radius:999px; overflow:hidden}
 .bigxp i{display:block; height:100%; width:0; background:linear-gradient(90deg, var(--sun), var(--coral)); transition:width 1.2s ease}
+.known{display:flex; flex-direction:column; align-items:center; gap:8px}
+.chips{display:flex; flex-wrap:wrap; gap:6px; justify-content:center; max-width:420px}
+.chips span{font-family:var(--read); font-weight:700; font-size:1.4rem; background:#fff3c4; border-radius:12px; padding:2px 10px; box-shadow:0 3px 0 #ecd27a}
 .gift{font-size:5rem; line-height:1; animation:wobble 1.2s ease-in-out infinite; padding:6px}
 .sticker-won{font-size:6rem; line-height:1; animation:pop .5s ease}
 .overlay{position:fixed; inset:0; background:#23305acc; z-index:40; display:grid; place-items:center; padding:20px}
@@ -364,7 +368,9 @@ const NAME = {a:'ay',b:'bee',c:'see',d:'dee',e:'ee',f:'eff',g:'jee',h:'aitch',i:
 const PHON = {s:'sss',a:'ah',t:'tuh',i:'ih',p:'puh',n:'nnn',c:'kuh',k:'kuh',e:'eh',h:'huh',r:'rrr',m:'mmm',d:'duh',g:'guh',o:'aw',u:'uh',l:'lll',f:'fff',b:'buh',j:'juh',z:'zzz',w:'wuh',v:'vvv',y:'yuh',x:'ks',q:'kwuh'};
 
 // Keyword pictures (pictorial mnemonics) for each letter.
-const KEY = {s:['sun','☀️'],a:['apple','🍎'],t:['tiger','🐯'],i:['inchworm','🐛'],p:['pig','🐷'],n:['nose','👃'],c:['cat','🐱'],k:['kite','🪁'],e:['egg','🥚'],h:['hat','🎩'],r:['rabbit','🐰'],m:['moon','🌙'],d:['dog','🐶'],g:['goat','🐐'],o:['octopus','🐙'],u:['umbrella','☂️'],l:['lion','🦁'],f:['fish','🐟'],b:['ball','⚽'],j:['juice','🧃'],z:['zebra','🦓'],w:['watermelon','🍉'],v:['violin','🎻'],y:['yo-yo','🪀'],x:['fox','🦊'],q:['queen','👑']};
+// The igloo is drawn inline: there's no igloo emoji, and the old inchworm (🐛) reads as "bug" to children.
+const IGLOO = '<svg viewBox="0 0 64 64" width="1em" height="1em" aria-hidden="true" style="vertical-align:-0.12em"><path d="M6 50 A26 26 0 0 1 58 50 Z" fill="#f2f9ff" stroke="#7fb8e0" stroke-width="2.5"/><path d="M11 40 H53 M16 30 H48 M24 22 H40 M22 40 V30 M33 40 V30 M44 40 V30 M28 30 V22 M38 30 V22 M14 50 V40 M50 50 V40" stroke="#9cc8e8" stroke-width="2" fill="none"/><path d="M23 50 A9 9 0 0 1 41 50 Z" fill="#4f7aa6"/><path d="M2 50 H62" stroke="#7fb8e0" stroke-width="3"/></svg>';
+const KEY = {s:['sun','☀️'],a:['apple','🍎'],t:['tiger','🐯'],i:['igloo',IGLOO],p:['pig','🐷'],n:['nose','👃'],c:['cat','🐱'],k:['kite','🪁'],e:['egg','🥚'],h:['hat','🎩'],r:['rabbit','🐰'],m:['moon','🌙'],d:['dog','🐶'],g:['goat','🐐'],o:['octopus','🐙'],u:['umbrella','☂️'],l:['lion','🦁'],f:['fish','🐟'],b:['ball','⚽'],j:['juice','🧃'],z:['zebra','🦓'],w:['watermelon','🍉'],v:['violin','🎻'],y:['yo-yo','🪀'],x:['fox','🦊'],q:['queen','👑']};
 
 // Visually confusable letters/numbers. Kept apart while new, deliberately contrasted once known.
 const CONF = {b:'dpq',d:'bpq',p:'qbd',q:'pdb',m:'nw',n:'mu',u:'nv',w:'mv',v:'wu',i:'lj',l:'i',j:'i',h:'n',f:'t',t:'f','6':'9','9':'6','2':'5','5':'2','1':'7','7':'1'};
@@ -372,11 +378,16 @@ const CONF = {b:'dpq',d:'bpq',p:'qbd',q:'pdb',m:'nw',n:'mu',u:'nv',w:'mv',v:'wu'
 const SAME_SOUND = {c:'kq',k:'cq',q:'ck',x:'ck'};
 
 // Two-letter words (VC) then CVC words. Every CVC word has a picture so meaning is checked.
-const WORDS2 = ['at','in','it','on','up','is','an','am','if','ox'];
-const CVC = {cat:'🐱',hat:'🎩',bat:'🦇',rat:'🐀',map:'🗺️',cap:'🧢',pan:'🍳',van:'🚐',can:'🥫',tap:'🚰',nap:'😴',sad:'😢',mad:'😠',ham:'🍖',pin:'📌',pig:'🐷',six:'6️⃣',lip:'👄',kid:'🧒',dig:'⛏️',zip:'🤐',sit:'🪑',dog:'🐶',log:'🪵',pot:'🍲',fox:'🦊',box:'📦',hot:'🔥',sun:'☀️',bus:'🚌',bug:'🐛',mug:'☕',cup:'🥤',nut:'🥜',hug:'🤗',tub:'🛁',bed:'🛏️',hen:'🐔',pen:'🖊️',ten:'🔟',net:'🥅',web:'🕸️',leg:'🦵',jet:'✈️',red:'🔴',wet:'💦'};
+// ("is" is left out on purpose: its s says /z/, so it can't be sounded out with the /s/ children learned.)
+const WORDS2 = ['at','in','it','on','up','an','am','if','ox'];
+// Pictures were chosen so a 4-year-old names them with the target word (weak ones like dig/zip/sit/tap were dropped).
+const CVC = {cat:'🐱',hat:'🎩',bat:'🦇',rat:'🐀',map:'🗺️',cap:'🧢',pan:'🍳',van:'🚐',can:'🥫',nap:'😴',sad:'😢',mad:'😠',ham:'🍖',pin:'📌',pig:'🐷',six:'6️⃣',lip:'👄',kid:'🧒',dog:'🐶',log:'🪵',pot:'🍲',fox:'🦊',box:'📦',hot:'🔥',sun:'☀️',bus:'🚌',bug:'🐛',mug:'☕',cup:'🥤',nut:'🥜',hug:'🤗',tub:'🛁',bed:'🛏️',hen:'🐔',pen:'🖊️',ten:'🔟',net:'🥅',web:'🕸️',leg:'🦵',jet:'✈️',red:'🔴',wet:'💦'};
 const rank = w => Math.max(...[...w].map(c => LETTERS.indexOf(c)));
+// Order: by the letters needed, then shorter words first, then words that start with a stretchable
+// sound (s, m, f, n, l, r, v, z, or a vowel), which are easier to blend than ones starting with a stop like t or p.
+const STRETCHY = 'smfnlrvzaeiou';
 const WORD_ORDER = [...WORDS2, ...Object.keys(CVC)]
-  .sort((a, b) => rank(a) - rank(b) || a.length - b.length);
+  .sort((a, b) => rank(a) - rank(b) || a.length - b.length || (!STRETCHY.includes(a[0])) - (!STRETCHY.includes(b[0])));
 
 const NUMWORD = ['zero','one','two','three','four','five','six','seven','eight','nine','ten'];
 const COUNTABLES = [['🦆','ducks'],['🍎','apples'],['⭐','stars'],['🐞','ladybugs'],['🚗','cars'],['🐟','fish'],['🌸','flowers'],['🧁','cupcakes'],['🐸','frogs'],['🎈','balloons']];
@@ -409,11 +420,13 @@ function numberOrder(){ const o=[]; for (let n=1;n<=10;n++){ o.push('N:'+n, 'C:'
 /* =====================================================================
    STATE (saved in this browser only)
    ===================================================================== */
-const SKEY = 'ziggy-reading-island-v1';
+const SKEY = 'ziggy-reading-island-v1';   // storage key kept from the first version so saved progress survives the rename
 const DEFAULTS = {
-  name:'', level:1, xp:0, totalXP:0, stars:0, stickers:[], hat:'none',
+  name:'Lucas', level:1, xp:0, totalXP:0, stars:0, stickers:[], hat:'none',
   items:{}, streak:{count:0, last:''}, today:{date:'', lessons:0, ms:0, override:false},
   totals:{lessons:0, answers:0, correct:0, ms:0},
+  recent:{letters:[], numbers:[], sounds:[], words:[]},   // first-try accuracy of the last 4 lessons per world (adaptive difficulty)
+  rapid:0,   // how often "random tapping" was caught (shown to grown-ups)
   settings:{voice:true, sfx:true, rate:0.9, voiceName:'', caseMode:'lower', mic:false, breakEvery:10, dailyLimit:0, lessonLen:6},
   unlockAll:false,
 };
@@ -457,6 +470,13 @@ function worldUnlocked(w){
   return countBox(w.need.prefix, w.need.box) >= w.need.count;
 }
 // Introduce new items only when the current working set is mostly learned (small working set).
+// Adaptive difficulty: recent first-try accuracy in a world (null until there's a lesson to go on).
+function recentAcc(worldId){ const a = (state.recent && state.recent[worldId]) || []; return a.length ? a.reduce((s, x) => s + x, 0) / a.length : null; }
+function recordLesson(worldId, acc){ const a = state.recent[worldId] || (state.recent[worldId] = []); a.push(acc); while (a.length > 4) a.shift(); }
+const struggling = worldId => { const r = recentAcc(worldId); return r !== null && r < 0.6; };
+// Fewer choices while an item is new, and fewer still when the child has been finding this world hard.
+function nChoices(q, base, w = lesson ? lesson.world : ""){ if (q.box < 1 && struggling(w)) return 2; return q.box < 2 ? base : base + 1; }
+
 function planNew(world){
   let order = world.items().filter(eligible);
   if (!order.length) order = world.items();
@@ -464,6 +484,8 @@ function planNew(world){
   const unseen = order.filter(id => boxOf(id) < 0);
   if (!unseen.length) return [];
   if (seen.length < 3) return unseen.slice(0, seen.length === 0 ? 2 : 1);
+  const rec = recentAcc(world.id);
+  if (rec !== null && rec < 0.65) return [];   // consolidate before adding anything new when it's been hard
   const ready = seen.filter(id => boxOf(id) >= 1).length / seen.length;
   const working = seen.filter(id => boxOf(id) < 3).length;
   return (ready >= 0.75 && working <= 5) ? [unseen[0]] : [];
@@ -607,14 +629,18 @@ function ziggy(mood, size, hatId = state.hat, extra = ''){
    ===================================================================== */
 let screen = 'splash';
 let lesson = null;
-let sinceBreak = Date.now();
+let activeSinceBreak = 0;   // lesson time (ms) since the last wiggle break; idle time on the map doesn't count
+function streakNow(){   // a broken streak shows as 0 instead of the stale count
+  const t = dayStr(), y = dayStr(new Date(Date.now() - DAY));
+  return (state.streak.last === t || state.streak.last === y) ? state.streak.count : 0;
+}
 
 function go(name, arg){ hush(); screen = name; lesson = name === 'lesson' ? lesson : null; window.scrollTo(0, 0); ({splash:rSplash, home:rHome, stickers:rStickers, closet:rCloset, gate:rGate, parent:rParent})[name](arg); }
 
 function rSplash(){
   app.innerHTML = `<div class="splash">
     ${ziggy('happy', 190, state.hat, 'dance')}
-    <h1>Ziggy's Reading Island</h1>
+    <h1>Lucas Reading Island</h1>
     <p class="muted">Letters, sounds and first words for ages 4 to 6</p>
     <button class="btn primary big" data-act="start">▶ Tap to play!</button>
   </div>`;
@@ -639,7 +665,7 @@ function rHome(greet){
     </div>
     <div class="stats">
       <span class="pill" title="Stars">⭐ ${state.stars}</span>
-      <span class="pill" title="Days in a row">🔥 ${state.streak.count}</span>
+      <span class="pill" title="Days in a row">🔥 ${streakNow()}
     </div>
   </header>
   <section class="goal" aria-label="Today's goal">
@@ -724,7 +750,7 @@ function rParent(){
         <div class="kpi"><div class="v">${Math.round(state.today.ms/60000)} min</div><div class="k">Today</div></div>
         <div class="kpi"><div class="v">${Math.round(t.ms/60000)} min</div><div class="k">All time</div></div>
         <div class="kpi"><div class="v">${acc}%</div><div class="k">First-try accuracy</div></div>
-        <div class="kpi"><div class="v">${state.streak.count}</div><div class="k">Day streak</div></div>
+        <div class="kpi"><div class="v">${streakNow()}</div><div class="k">Day streak</div></div>
       </div>
     </section>
     <section>
@@ -737,14 +763,15 @@ function rParent(){
       <div class="mgrid" style="margin-top:5px">${[1,2,3,4,5,6,7,8,9,10].map(n => cell('C:'+n, n)).join('')}</div></section>
     <section><h3>Words</h3><div class="wordlist">${WORD_ORDER.map(w => `<span style="background:${BOXCOL[boxOf('W:'+w)]}">${w}</span>`).join('')}</div></section>
     <section><h3>Practice together</h3>
-      <p>${tough.length ? 'These were the trickiest lately: <b>' + tough.map(label).map(esc).join(', ') + '</b>. Point them out in books, on signs and on cereal boxes.' : 'Nothing tricky yet. Play a few lessons and check back here.'}</p></section>
+      <p>${tough.length ? 'These were the trickiest lately: <b>' + tough.map(label).map(esc).join(', ') + '</b>. Point them out in books, on signs and on cereal boxes.' : 'Nothing tricky yet. Play a few lessons and check back here.'}</p>
+      ${WORLDS.some(w => recentAcc(w.id) !== null && recentAcc(w.id) < 0.5) || state.rapid >= 5 ? `<p style="margin-top:8px"><b>Tip:</b> ${esc(state.name || 'Your child')} has been finding some lessons hard${state.rapid >= 5 ? ' or tapping quickly without listening' : ''}. The game has slowed down new material and offers fewer choices for now. Sitting together for a lesson or two, and saying the sounds out loud together, helps a lot.</p>` : ''}</section>
 
     <section>
       <h2>Settings</h2>
       <div class="set" style="margin-top:10px">
         <label for="kidname">Child's name<small>Ziggy says hi using it.</small></label>
         <input id="kidname" type="text" maxlength="20" value="${esc(state.name)}" placeholder="Name">
-        <label>Ziggy's voice<small>Reads every instruction out loud.</small></label>${tog('voice', s.voice)}
+        <label>Ziggy's voice<small>Reads every instruction out loud. Children who can't read yet need it for most activities.</small></label>${tog('voice', s.voice)}
         <label for="voicepick">Voice<small>Pick the clearest one on this device.</small></label>
         <select id="voicepick"><option value="">Automatic</option>${voices.map(v => `<option ${v.name === s.voiceName ? 'selected' : ''} value="${esc(v.name)}">${esc(v.name)} (${esc(v.lang)})</option>`).join('')}</select>
         <label for="rate">Speaking speed<small>Slower helps new listeners.</small></label>
@@ -804,9 +831,31 @@ function rParent(){
 function limitReached(){ rollToday(); return state.settings.dailyLimit > 0 && !state.today.override && state.today.ms >= state.settings.dailyLimit * 60000; }
 
 function startLesson(worldId){
-  const world = WORLDS.find(w => w.id === worldId);
   if (limitReached()) return rRest();
-  if (state.settings.breakEvery > 0 && Date.now() - sinceBreak >= state.settings.breakEvery * 60000) return rBreak(worldId);
+  if (state.settings.breakEvery > 0 && activeSinceBreak >= state.settings.breakEvery * 60000) return rBreak(worldId);
+  const {world, qs, newItems} = buildPlan(worldId);
+  lesson = {world:world.id, q:qs, i:0, xp:0, firstTry:0, scored:0, combo:0, best:0, startedAt:Date.now(), newItems};
+  screen = 'lesson';
+  rLessonShell(); renderQuestion();
+}
+
+// Orders items so the same one never comes twice in a row (when possible): always place the item
+// with the most copies left that differs from the previous one. (A random shuffle used to fail on small pools.)
+function arrangeNoRepeats(items){
+  const left = {}; items.forEach(id => left[id] = (left[id] || 0) + 1);
+  const out = [];
+  while (out.length < items.length) {
+    const prev = out[out.length - 1];
+    const cands = shuffle(Object.keys(left).filter(id => left[id] > 0));
+    cands.sort((a, b) => (a === prev) - (b === prev) || left[b] - left[a]);
+    const pick = cands[0]; out.push(pick); left[pick]--;
+  }
+  return out;
+}
+
+// Pure lesson planner (no DOM): picks new items, the practice sequence and the activity for each step.
+function buildPlan(worldId){
+  const world = WORLDS.find(w => w.id === worldId);
   const newItems = planNew(world);
   newItems.forEach(ensure);
   let order = world.items().filter(eligible); if (!order.length) order = world.items();
@@ -819,29 +868,38 @@ function startLesson(worldId){
   // New items appear twice (exposure + retrieval); the rest is weighted by Leitner box and due-ness.
   let seq = [];
   newItems.forEach(id => seq.push(id, id));
+  const cap = pool.length >= 3 ? 2 : Math.ceil(n / 2);   // no single item takes over a lesson
+  const count = id => seq.filter(x => x === id).length;
   while (seq.length < n) {
     const last = seq[seq.length - 1];
-    const cands = pool.length > 1 ? pool.filter(id => id !== last) : pool;
+    let cands = pool.filter(id => id !== last && count(id) < cap);
+    if (!cands.length) cands = pool.length > 1 ? pool.filter(id => id !== last) : pool;
     const total = cands.reduce((s, id) => s + weightOf(id), 0);
     let r = Math.random() * total, pick = cands[0];
     for (const id of cands) { r -= weightOf(id); if (r <= 0) { pick = id; break; } }
     seq.push(pick);
   }
-  seq = seq.slice(0, Math.max(n, newItems.length * 2));
-  for (let t = 0; t < 30; t++) { const s2 = shuffle(seq); if (s2.every((v, i) => i === 0 || v !== s2[i-1])) { seq = s2; break; } }
+  seq = arrangeNoRepeats(seq.slice(0, Math.max(n, newItems.length * 2)));
 
   const qs = [];
   newItems.filter(id => /^[LSN]:/.test(id)).forEach(id => qs.push(mkQ(id, 'intro')));
   seq.forEach(id => qs.push(mkQ(id)));
+  if (world.id === 'sounds') {
+    // Teach names and sounds together, and keep letter names moving even when the child stays in Sound Jungle.
+    newItems.forEach(id => { const l = 'L:' + id.slice(2); if (boxOf(l) < 0) ensure(l); });
+    const names = LETTERS.map(l => 'L:' + l).filter(id => boxOf(id) >= 0 && boxOf(id) < 4);
+    if (names.length) {
+      const pick = names.sort((a, b) => weightOf(b) - weightOf(a) || Math.random() - .5)[0];
+      qs.splice(Math.min(qs.length, 2 + Math.floor(Math.random() * 3)), 0, mkQ(pick));
+    }
+  }
   if (hasSpecial) {
     const focus = newItems[0] || rand(pool);
     const sp = mkQ(focus, world.id === 'letters' ? 'trace' : 'sayIt');
     const at = Math.min(qs.length, Math.max(qs.length - 2, 1 + Math.floor(Math.random() * (qs.length - 1))));
     qs.splice(at, 0, sp);
   }
-  lesson = {world:world.id, q:qs, i:0, xp:0, firstTry:0, scored:0, combo:0, best:0, startedAt:Date.now(), newItems};
-  screen = 'lesson';
-  rLessonShell(); renderQuestion();
+  return {world, qs, newItems};
 }
 
 function mkQ(id, force){
@@ -851,7 +909,7 @@ function mkQ(id, force){
     if (kind === 'L') { const o = [['findLetter', b < 1 ? 'match' : 'hear']]; if (b >= 1) o.push(['bigLittle'], ['findLetter','hear']); [type, mode] = rand(o); }
     else if (kind === 'N') { type = 'findNumber'; mode = b < 1 ? 'match' : 'hear'; }
     else if (kind === 'C') type = 'count';
-    else if (kind === 'S') { type = (b >= 1 && val !== 'x' && Math.random() < (b >= 2 ? .6 : .4)) ? 'firstSound' : 'soundToLetter'; }
+    else if (kind === 'S') { type = (b >= 1 && val !== 'x' && val !== 'q' && Math.random() < (b >= 2 ? .6 : .4)) ? 'firstSound' : 'soundToLetter'; }
     else if (kind === 'W') { type = val.length === 2 ? 'pickWord2' : b < 1 ? 'blend' : b < 2 ? 'build' : (Math.random() < .7 ? 'readIt' : 'build'); }
   }
   const cm = state.settings.caseMode;
@@ -887,17 +945,33 @@ function renderQuestion(){
   ({intro:rIntro, findLetter:rFindLetter, bigLittle:rBigLittle, trace:rTrace, findNumber:rFindNumber, count:rCount,
     soundToLetter:rSoundToLetter, firstSound:rFirstSound, sayIt:rSayIt, pickWord2:rPickWord2, blend:rBlend, build:rBuild, readIt:rReadIt})[q.type](q, stage);
   const L = lesson;
-  setTimeout(() => { if (lesson === L && L.q[L.i] === q && q.prompt) q.prompt(); }, 250);
+  setTimeout(() => { if (lesson === L && L.q[L.i] === q && q.prompt && !q.started) q.prompt(); }, 250);
 }
 const cur = () => lesson && lesson.q[lesson.i];
 const showL = (l, q) => q.upper ? l.toUpperCase() : l;
 
+// Impulse guard: 4-year-olds often tap everything fast. Two wrong taps within ~2 seconds pauses the
+// choices briefly and replays the question ("Let's listen first"), instead of rewarding a guessing spree.
+let tapLog = [], calmUntil = 0;
 function bindChoices(q, isRight){
   $$('#stage .choice[data-v]').forEach(btn => btn.addEventListener('click', () => {
     if (q.done || btn.disabled) return;
+    const now = Date.now();
+    if (now < calmUntil) return;
     sfx.tap();
-    if (isRight(btn.dataset.v)) { q.done = true; btn.classList.add('right'); success(q, btn); }
-    else miss(q, btn);
+    if (isRight(btn.dataset.v)) { q.done = true; btn.classList.add('right'); success(q, btn); return; }
+    tapLog = tapLog.filter(t => now - t < 2200); tapLog.push(now);
+    if (tapLog.length >= 2) {
+      tapLog = []; calmUntil = now + 2500; state.rapid++; q.tries++;
+      if (!q.missed && !q.practice) { q.missed = true; ensure(q.id).w++; }
+      btn.classList.add('wrong'); btn.disabled = true; save();
+      setMood('think', 'wobble'); sfx.oops();
+      const st = $('#stage'); st.style.opacity = '.55';
+      setTimeout(() => { if (st.isConnected) { st.style.opacity = ''; if (q.tries >= 2 && !q.done) reveal(q); } }, 2500);
+      talk(["Whoa, slow down! Let's listen first.", 400].concat(q.retrySay || []), "Slow down. Let's listen first!");
+      return;
+    }
+    miss(q, btn);
   }));
 }
 function reveal(q){ $$('#stage .choice[data-v]').forEach(b => { if (q.isRight && q.isRight(b.dataset.v)) b.classList.add('hint'); }); }
@@ -919,8 +993,9 @@ async function success(q, el){
   setMood('wow', 'bounce');
   const line = q.tries > 0 ? rand(KEEP_TRYING) : rand(PRAISE);
   const parts = (q.echo || []).concat([line]);
+  const t0 = Date.now();
   await talk(parts, (q.echoText ? q.echoText + ' ' : '') + line);
-  await wait(250);
+  await wait(Math.max(250, 1100 - (Date.now() - t0)));   // keep the success moment visible even with the voice off
   if (lesson === L && cur() === q) next();
 }
 function miss(q, el){
@@ -931,13 +1006,14 @@ function miss(q, el){
   if (q.tries >= 2) { reveal(q); talk(q.revealSay || ['Here it is. Tap the shiny one!'], q.revealText || 'Here it is. Tap the shiny one!'); }
   else talk(['Oops! Try again.', 300].concat(q.retrySay || []), 'Oops! Try again.');
 }
-function grade(q, first){
-  const r = ensure(q.id);
+function grade(q, first){ applyAnswer(q.id, first, q.missed); save(); }
+// Leitner update: first-try correct moves up a box; any miss moves down one (never below 0).
+function applyAnswer(id, first, missed){
+  const r = ensure(id);
   r.s++; r.t = Date.now();
   state.totals.answers++;
   if (first) { r.c++; state.totals.correct++; r.b = Math.min(5, r.b + 1); }
-  else if (q.missed) r.b = Math.max(0, r.b - 1);
-  save();
+  else if (missed) r.b = Math.max(0, r.b - 1);
 }
 function next(){
   lesson.i++;
@@ -954,6 +1030,17 @@ function distractLetters(target, n, world, box){
   let pool = LETTERS.filter(l => ok(l) && boxOf(prefix + l) >= 0);
   if (pool.length < n) pool = pool.concat(shuffle(LETTERS.filter(l => ok(l) && !pool.includes(l))));
   let picks = shuffle(pool.slice(0, Math.max(n, Math.min(pool.length, 8)))).slice(0, n);
+  if (world === 'sounds' && box < 2) {
+    // Short vowels are the hardest sounds for young ears to tell apart (and the speech engine blurs them),
+    // so new sounds never compete vowel-against-vowel: a vowel target gets consonant choices, others at most one vowel.
+    const V = 'aeiou', isV = c => V.includes(c);
+    let vowelsLeft = isV(target) ? 0 : 1;
+    const kept = picks.filter(c => !isV(c) || (vowelsLeft > 0 && vowelsLeft-- > 0));
+    const known = c => boxOf('S:' + c) >= 0;
+    const cons = [...shuffle(LETTERS.filter(c => !isV(c) && ok(c) && known(c))), ...shuffle(LETTERS.filter(c => !isV(c) && ok(c) && !known(c)))];
+    for (const c of cons) { if (kept.length >= n) break; if (!kept.includes(c)) kept.push(c); }
+    picks = shuffle(kept);
+  }
   if (box >= 3) { const c = [...conf].find(x => !same.includes(x)); if (c && !picks.includes(c)) picks[0] = c; }  // contrast practice once known
   return picks;
 }
@@ -966,12 +1053,18 @@ function distractNums(target, n, box){
   if (box >= 3 && conf && !picks.includes(+conf[0])) picks[0] = +conf[0];
   return picks;
 }
+const SAME_MEANING = [['mug','cup'], ['sad','mad']];   // too alike for a 4-year-old to pick between by picture
 function pickPics(word, n){
-  const all = Object.keys(CVC).filter(w => w !== word && CVC[w] !== CVC[word]);
+  const twin = SAME_MEANING.flatMap(p => p.includes(word) ? p : []);
+  const all = Object.keys(CVC).filter(w => w !== word && CVC[w] !== CVC[word] && !twin.includes(w));
   const score = w => [...w].reduce((s, c, i) => s + (word[i] === c ? 2 : word.includes(c) ? 1 : 0), 0);
   const known = all.filter(w => eligible('W:' + w));
   const base = (known.length >= n ? known : all).sort((a, b) => score(b) - score(a) || Math.random() - .5);
-  return shuffle(base.slice(0, 6)).slice(0, n);
+  const picks = [];
+  for (const w of shuffle(base.slice(0, 6))) {
+    if (picks.length < n && !SAME_MEANING.some(p => p.includes(w) && picks.some(x => p.includes(x)))) picks.push(w);
+  }
+  return picks;
 }
 
 /* ---------- question renderers ---------- */
@@ -980,7 +1073,7 @@ function rIntro(q, stage){
   if (q.kind === 'N') {
     const n = +l;
     stage.innerHTML = `<p class="instr">A new number!</p>
-      <button class="intro-card" id="card"><span class="ltr">${n}</span>${n > 0 ? `<span class="kw"><span class="tenframe" style="width:200px">${tenCells(n, '🔵', false)}</span></span>` : '<span class="kw"><span class="big-pic">🍽️</span>nothing!</span>'}</button>
+      <button class="intro-card" id="card"><span class="ltr">${n}</span>${n > 0 ? `<span class="kw"><span class="tenframe" style="width:min(200px, 60vw)">${tenCells(n, '🔵', false)}</span></span>` : '<span class="kw"><span class="big-pic">🍽️</span>nothing!</span>'}</button>
       <button class="btn go big" id="ok">Got it! ➜</button>`;
     q.prompt = () => talk([`This is the number ${NUMWORD[n]}.`, 300, n > 0 ? `${NUMWORD[n]} dots.` : 'Zero means nothing at all.', 300, `Say it with me. ${NUMWORD[n]}!`], `This is ${n}. Say it with me: ${NUMWORD[n]}!`);
   } else if (q.kind === 'L') {
@@ -1001,7 +1094,7 @@ function rIntro(q, stage){
 }
 
 function rFindLetter(q, stage){
-  const l = q.val, n = q.box < 2 ? 3 : 4;
+  const l = q.val, n = nChoices(q, 3);
   const opts = shuffle([l, ...distractLetters(l, n - 1, 'letters', q.box)]);
   stage.innerHTML = `${q.mode === 'match'
       ? `<div class="target-card">${showL(l, q)}</div><p class="instr">Find the same letter!</p>`
@@ -1018,7 +1111,7 @@ function rFindLetter(q, stage){
 function rBigLittle(q, stage){
   const l = q.val, upFirst = Math.random() < .5;
   const show = x => upFirst ? x : x.toUpperCase();
-  const opts = shuffle([l, ...distractLetters(l, q.box < 2 ? 2 : 3, 'letters', q.box)]);
+  const opts = shuffle([l, ...distractLetters(l, nChoices(q, 3) - 1, 'letters', q.box)]);
   stage.innerHTML = `<div class="target-card">${upFirst ? l.toUpperCase() : l}</div>
     <p class="instr">${upFirst ? 'Big letter! Find its little letter.' : 'Little letter! Find its big letter.'}</p>
     <div class="choices">${opts.map(x => `<button class="choice" data-v="${x}">${show(x)}</button>`).join('')}</div>`;
@@ -1110,7 +1203,7 @@ function tenCells(n, emoji, buttons){
 }
 
 function rFindNumber(q, stage){
-  const n = +q.val, k = q.box < 2 ? 3 : 4;
+  const n = +q.val, k = nChoices(q, 3);
   const opts = shuffle([n, ...distractNums(n, k - 1, q.box)]);
   stage.innerHTML = `${q.mode === 'match' ? `<div class="target-card">${n}</div><p class="instr">Find the same number!</p>` : `<button class="big-ear" data-act="replay" aria-label="Hear the number">🔊</button><p class="instr">Pop the number you hear!</p>`}
     <div class="choices balloons">${opts.map((x, i) => `<button class="choice c${i}" data-v="${x}">${x}</button>`).join('')}</div>`;
@@ -1123,7 +1216,7 @@ function rFindNumber(q, stage){
 
 function rCount(q, stage){
   const n = +q.val, [emoji, plural] = rand(COUNTABLES);
-  const opts = shuffle([n, ...shuffle([1,2,3,4,5,6,7,8,9,10].filter(x => x !== n && Math.abs(x - n) <= 3)).slice(0, q.box < 2 ? 2 : 3)]);
+  const opts = shuffle([n, ...shuffle([1,2,3,4,5,6,7,8,9,10].filter(x => x !== n && Math.abs(x - n) <= 3)).slice(0, nChoices(q, 3) - 1)]);
   stage.innerHTML = `<p class="instr">How many ${plural}? Tap each one to count!</p>
     <div class="tenframe">${tenCells(n, emoji, true)}</div>
     <div class="choices">${opts.map(x => `<button class="choice" data-v="${x}">${x}</button>`).join('')}</div>`;
@@ -1142,7 +1235,7 @@ function rCount(q, stage){
 }
 
 function rSoundToLetter(q, stage){
-  const l = q.val, n = q.box < 2 ? 3 : 4, kw = KEY[l];
+  const l = q.val, n = nChoices(q, 3), kw = KEY[l];
   const opts = shuffle([l, ...distractLetters(l, n - 1, 'sounds', q.box)]);
   const helper = q.box < 1;
   stage.innerHTML = `<button class="big-ear" data-act="replay" aria-label="Hear the sound">🔊</button>
@@ -1161,7 +1254,7 @@ function rFirstSound(q, stage){
   const l = q.val;
   const words = [KEY[l]].concat(Object.entries(CVC).filter(([w]) => w[0] === l).map(([w, e]) => [w, e]));
   const [word, pic] = rand(words);
-  const opts = shuffle([l, ...distractLetters(l, q.box < 2 ? 2 : 3, 'sounds', q.box)]);
+  const opts = shuffle([l, ...distractLetters(l, nChoices(q, 3) - 1, 'sounds', q.box)]);
   stage.innerHTML = `<button class="big-pic" id="picbtn" aria-label="Hear the word">${pic}</button>
     <p class="instr">What is the first sound?</p>
     <div class="choices">${opts.map(x => `<button class="choice" data-v="${x}">${showL(x, q)}</button>`).join('')}</div>`;
@@ -1218,26 +1311,35 @@ function blendWidget(word, host, onDone){
   let busy = false;
   $('#slide', host).addEventListener('click', async () => {
     if (busy) return; busy = true;
+    const cq = cur(); if (cq) cq.started = true;   // the opening instruction must not interrupt a slide already under way
     const L = lesson; const my = ++speechSeq; try { synth && synth.cancel(); } catch {}
-    await wait(60);
-    const tr = track.getBoundingClientRect();
-    for (let i = 0; i < word.length; i++) {
-      const [cx] = centerOf(tiles[i]);
-      ball.style.left = Math.max(6, Math.min(94, 100 * (cx - tr.left) / tr.width)) + '%';
-      tiles.forEach(t => t.classList.remove('lit')); tiles[i].classList.add('lit', 'heard');
-      await sayOne(PHON[word[i]], {rate: .8});
+    let finished = false;
+    try {   // finally-reset: if a tap interrupts the blend, the button must still work afterwards
+      await wait(60);
+      const tr = track.getBoundingClientRect();
+      for (let i = 0; i < word.length; i++) {
+        const [cx] = centerOf(tiles[i]);
+        ball.style.left = Math.max(6, Math.min(94, 100 * (cx - tr.left) / tr.width)) + '%';
+        tiles.forEach(t => t.classList.remove('lit')); tiles[i].classList.add('lit', 'heard');
+        await sayOne(PHON[word[i]], {rate: .8});
+        if (my !== speechSeq || lesson !== L) return;
+      }
+      ball.style.left = '94%'; tiles.forEach(t => t.classList.add('lit'));
+      await sayOne(word, {rate: .55}); await wait(150);
       if (my !== speechSeq || lesson !== L) return;
+      await sayOne(word);
+      finished = my === speechSeq && lesson === L;
+    } finally {
+      busy = false;
+      tiles.forEach(t => t.classList.remove('lit'));
+      if (!finished) ball.style.left = '6%';
     }
-    ball.style.left = '94%'; tiles.forEach(t => t.classList.add('lit'));
-    await sayOne(word, {rate: .55}); await wait(150); await sayOne(word);
-    tiles.forEach(t => t.classList.remove('lit'));
-    busy = false;
-    if (my === speechSeq && lesson === L) onDone();
+    if (finished) onDone();
   });
 }
 
 function rPickWord2(q, stage){
-  const w = q.val, k = q.box < 2 ? 3 : 4;
+  const w = q.val, k = nChoices(q, 3);
   const opts = shuffle([w, ...shuffle(WORDS2.filter(x => x !== w)).slice(0, k - 1)]);
   const choicesHtml = `<p class="instr">Find the word you hear!</p><div class="choices">${opts.map(x => `<button class="choice word-choice" data-v="${x}">${x}</button>`).join('')}</div>`;
   q.isRight = v => v === w;
@@ -1252,7 +1354,7 @@ function rPickWord2(q, stage){
 }
 
 function picChoices(q, w){
-  const opts = shuffle([w, ...pickPics(w, 2)]);
+  const opts = shuffle([w, ...pickPics(w, struggling(lesson ? lesson.world : "") && q.box < 1 ? 1 : 2)]);
   return `<div class="choices">${opts.map(x => `<button class="choice" data-v="${x}" aria-label="picture"><span class="pic">${CVC[x]}</span></button>`).join('')}</div>`;
 }
 function rBlend(q, stage){
@@ -1263,7 +1365,7 @@ function rBlend(q, stage){
   q.revealSay = [`${w}. This one. Tap it!`];
   q.retrySay = [w];
   blendWidget(w, $('#bw'), () => {
-    if (cur() !== q) return;
+    if (cur() !== q || $('#pics .choice')) return;   // re-blending is fine, but keep the child's answers
     $('#pics').innerHTML = `<p class="instr">Which picture is it?</p>${picChoices(q, w)}`;
     bindChoices(q, q.isRight);
     q.prompt = () => talk([`${w}. Which picture is ${w}?`], `Which picture is "${w}"?`);
@@ -1364,12 +1466,18 @@ function finishLesson(){
   rollToday();
   const t = dayStr(), y = dayStr(new Date(Date.now() - DAY));
   if (state.streak.last !== t) { state.streak.count = state.streak.last === y ? state.streak.count + 1 : 1; state.streak.last = t; }
-  state.today.lessons++; state.today.ms += dur;
+  state.today.lessons++; state.today.ms += dur; activeSinceBreak += dur;
   state.totals.lessons++; state.totals.ms += dur;
+  if (L.scored) recordLesson(L.world, L.firstTry / L.scored);
   const newHat = levels.map(l => HATS.find(h => h.lvl === l)).filter(Boolean).pop();
   if (newHat) state.hat = newHat.id;
   save();
 
+  // Competence feedback: show what the child now knows (mastery-focused, not just prizes).
+  const prefix = {letters:'L:', numbers:'N:', sounds:'S:', words:'W:'}[L.world];
+  const known = WORLDS.find(w => w.id === L.world).items().filter(id => id.startsWith(prefix) && boxOf(id) >= 2).map(id => id.slice(2));
+  const noun = known.length === 1 ? L.world.replace(/s$/, '') : L.world;
+  const knownHtml = known.length ? `<div class="known"><div class="instr">You know ${known.length} ${noun}!</div><div class="chips">${known.map(k => `<span>${esc(k)}</span>`).join('')}</div></div>` : '';
   const stars = Array.from({length: L.scored}, (_, i) => `<span class="${i < L.firstTry ? '' : 'off'}" style="animation-delay:${i * .12}s">⭐</span>`).join('');
   app.innerHTML = `<div class="panel">
     ${ziggy('wow', 150, state.hat, 'dance')}
@@ -1378,6 +1486,7 @@ function finishLesson(){
     <div class="xpline">+${gained} XP${perfect ? ' (perfect bonus!)' : ''}</div>
     <div class="bigxp"><i id="bx"></i></div>
     <div class="muted">Level ${state.level}: ${state.xp} / ${levelNeed(state.level)} XP</div>
+    ${knownHtml}
     <div id="giftzone">${sticker ? '<button class="gift" id="gift" aria-label="Open your present">🎁</button><div class="muted">Tap your present!</div>' : '<div class="xpline">+5 bonus stars! You have every sticker!</div>'}</div>
     <div class="row"><button class="btn go big" data-act="again" data-w="${L.world}">Play again ➜</button><button class="btn big" data-act="home">🗺️ Map</button></div>
   </div>`;
@@ -1385,7 +1494,7 @@ function finishLesson(){
   sfx.level();
   setTimeout(() => { const b = $('#bx'); if (b) b.style.width = Math.round(100 * state.xp / levelNeed(state.level)) + '%'; }, 120);
   const encourage = perfect ? 'Wow! Every one on the first try!' : L.firstTry >= L.scored / 2 ? 'Great work! You are learning so much.' : 'You practiced hard. Your brain grew today!';
-  talk([encourage, sticker ? 'Tap your present!' : '']);
+  talk([encourage, known.length ? `You know ${known.length} ${noun}!` : '', sticker ? 'Tap your present!' : '']);
   const gift = $('#gift');
   if (gift) gift.addEventListener('click', () => {
     sfx.gift(); confetti(60, ...centerOf(gift));
@@ -1422,7 +1531,7 @@ function rBreak(worldId){
     if (left === 10) { $('#move').textContent = m[1]; talk([m[1]]); }
     if (left <= 0) { clearInterval(iv); const b = $('#bdone'); if (b) b.disabled = false; $('#cd').textContent = '🎉'; talk(['Great wiggling! Ready to read?']); }
   }, 1000);
-  $('#bdone').addEventListener('click', () => { sinceBreak = Date.now(); startLesson(worldId); });
+  $('#bdone').addEventListener('click', () => { activeSinceBreak = 0; startLesson(worldId); });
 }
 function rRest(){
   screen = 'rest';
@@ -1436,7 +1545,7 @@ function rRest(){
    EVENTS
    ===================================================================== */
 let resetArmed = false;
-app.addEventListener('click', e => {
+document.addEventListener('click', e => {   // document-level so overlays (outside #app) work too
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act;
   audio();
@@ -1449,7 +1558,18 @@ app.addEventListener('click', e => {
       sfx.pop(); startLesson(w.id); break;
     }
     case 'again': startLesson(el.dataset.w); break;
-    case 'quit': hush(); lesson = null; go('home'); break;
+    case 'quit': {   // little fingers hit ✕ by accident, so ask before throwing a lesson away
+      if (!lesson) { go('home'); break; }
+      if ($('.overlay')) break;
+      const o = document.createElement('div'); o.className = 'overlay'; o.id = 'quitask';
+      o.innerHTML = `<div class="card">${ziggy('think', 120)}<p class="instr">Stop playing?</p>
+        <div class="row"><button class="btn go big" data-act="quitno">▶ Keep playing</button><button class="btn big" data-act="quityes">🗺️ Map</button></div></div>`;
+      document.body.appendChild(o);
+      talk(['Do you want to stop? Tap the green button to keep playing.'], 'Stop playing?');
+      break;
+    }
+    case 'quitno': { const o = $('#quitask'); if (o) o.remove(); const q = cur(); if (q && q.prompt && !q.done) q.prompt(); break; }
+    case 'quityes': { const o = $('#quitask'); if (o) o.remove(); hush(); lesson = null; go('home'); break; }
     case 'replay': { const q = cur(); if (q && q.prompt) q.prompt(); break; }
     case 'stickers': go('stickers'); break;
     case 'sticker': sfx.pop(); el.classList.remove('bounce'); void el.offsetWidth; el.classList.add('bounce'); break;
@@ -1476,6 +1596,16 @@ app.addEventListener('click', e => {
   }
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) hush(); });
+
+// Test hook for the automated test suite and learner simulation (only with ?test=1 in the URL).
+if (/[?&]test=1\b/.test(location.search)) {
+  window.__RI = {
+    get state(){ return state; }, setState(s){ state = merge(DEFAULTS, s); },
+    LETTERS, NAME, PHON, KEY, CVC, WORDS2, WORD_ORDER, WORLDS, HATS, STICKERS, CONF, SAME_SOUND,
+    planNew, eligible, worldUnlocked, buildPlan, mkQ, applyAnswer, distractLetters, distractNums, pickPics,
+    boxOf, countBox, weightOf, levelNeed, streakNow, startLesson, go, recordLesson, recentAcc, nChoices,
+  };
+}
 
 go('splash');
 })();

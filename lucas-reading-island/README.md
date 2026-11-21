@@ -1,6 +1,7 @@
-# Ziggy's Reading Island
+# Lucas Reading Island
 
-A playful, self-contained learn-to-read game for 4 to 6 year olds. Open `index.html` in any modern browser
+A playful, self-contained learn-to-read game for 4 to 6 year olds, made for Lucas (the child's name can be changed
+in the Grown-ups area). Open `index.html` in any modern browser
 (Chrome, Edge, Safari, Firefox; tablet or phone works best). No install, no account, no tracking. Progress is saved
 in the browser on that device.
 
@@ -32,12 +33,32 @@ Children explore an island with Ziggy, a friendly little dragon, through four wo
 - **Small working set**: new items are added only when about 75% of current ones are learned, with at most 5 in progress
 - **Multisensory tracing** and **saying sounds aloud** (production effect)
 - **Errorless scaffolding**: gentle retry, the answer is highlighted after 2 misses, and Ziggy helps finish
+- **Adaptive difficulty**: after hard lessons, no new material is added and new items show fewer choices
+- **Impulse guard**: rapid random tapping pauses the choices briefly ("Let's listen first")
+- **Names and sounds together**: Sound Jungle also reviews letter names, so they keep progressing
+- **Easier blends first**: words starting with stretchable sounds (s, m, f…) come before words starting with stops (t, p)
+- **Competence feedback**: results show what the child now knows, not just prizes
 - **Short lessons** (about 2 to 4 minutes), optional **wiggle breaks** and **daily time limits**
 - **Andika** typeface, designed for beginning readers; lowercase first by default
 
 The Grown-ups area (behind a simple adult math gate) explains each point with research references, shows a
 mastery map of every letter, sound, number and word, lists the trickiest items to practise together, and has settings
 (voice, speed, letter case, lesson length, breaks, time limits, unlock all, reset).
+
+## Tests and experiment
+
+See [TEST_REPORT.md](TEST_REPORT.md) for bug-test results, a simulated-learner experiment and a
+developmental-psychology review.
+
+```bash
+node tests/lucas-reading-island/run_tests.js
+```
+
+```bash
+node tests/lucas-reading-island/simulate_learners.js
+```
+
+Both need Playwright with Chromium. The game exposes a test hook only when opened with `?test=1`.
 
 ## Inspiration
 
