@@ -159,6 +159,14 @@ async function logicTests(browser) {
     [0.9, 0.9, 0.9, 0.9].forEach(a => R.recordLesson('letters', a));
     t('Once lessons go well again, new letters come back', R.planNew(w0).length === 1);
 
+    // Letter A pronunciation: "ay" is read as "aye" (sounds like I); a bare "A" before a word is read as "uh".
+    const sp = R.speakable;
+    t('Letter A is never spelled "ay" for the voice, and F is not "eff" (spelled out as E-F-F)', R.NAME.a === 'A' && R.NAME.f === 'F' && !Object.values(R.NAME).some(v => v === 'ay' || v === 'eff'));
+    t('"A" before a word gets a comma so it is said as the letter name',
+      sp('A says') === 'A, says' && sp('Big A and little A are partners!') === 'Big A, and little A, are partners!' &&
+      sp('Pop the letter A!') === 'Pop the letter A!' && sp('Find a word') === 'Find a word' && sp('Say "A"!') === 'Say A,!',
+      [sp('A says'), sp('Big A and little A are partners!'), sp('Find a word')]);
+
     // Letter names travel with sounds
     seed(Object.fromEntries(L.slice(0, 8).map(l => ['L:' + l, 2])));
     let nameQs = 0;
@@ -186,7 +194,7 @@ async function lessonStep(p) {
     const ov = await p.$('.overlay .card button'); if (ov) await ov.click();
     if (await p.$('[data-act=again]')) return 'results';
     if (await p.$('#bdone')) return 'break';
-    const st = await p.$('#stage'); if (!st) return 'left-lesson';
+    const st = await p.$('#stage'); if (!st) { await p.waitForTimeout(600); return (await p.$('[data-act=again]')) ? 'results' : 'left-lesson'; }
     if (await p.$('#stage #ok')) { await p.click('#ok'); return; }
     if (await p.$('#stage #said')) { await p.click('#said'); return; }
     if (await p.$('#stage #tink')) { const s = await p.$('#tskip'); if (s) { await s.click(); return; }

@@ -361,8 +361,10 @@ h1,h2,h3{font-family:var(--display); margin:0; text-wrap:balance; letter-spacing
 // words like "sat", "pin", "tap" are possible after only six letters; b/d and p/q apart).
 const LETTERS = 'satipnckehrmdgoulfbjzwvyxq'.split('');
 
-// Letter NAMES, spelled so speech engines say the name (not the article "a").
-const NAME = {a:'ay',b:'bee',c:'see',d:'dee',e:'ee',f:'eff',g:'jee',h:'aitch',i:'eye',j:'jay',k:'kay',l:'ell',m:'em',n:'en',o:'oh',p:'pee',q:'cue',r:'are',s:'ess',t:'tee',u:'you',v:'vee',w:'double you',x:'ex',y:'why',z:'zee'};
+// Letter NAMES, spelled so speech engines say the name. A is a capital "A": the old spelling "ay" is read
+// as "aye" (rhymes with eye), which sounds like the letter I. sayOne() keeps "A" from being read as the word "a".
+// F, R, U, W are capitals too: "eff" was spelled out as "E-F-F", and "are"/"you"/"double you" lost their stress.
+const NAME = {a:'A',b:'bee',c:'see',d:'dee',e:'ee',f:'F',g:'jee',h:'aitch',i:'eye',j:'jay',k:'kay',l:'ell',m:'em',n:'en',o:'oh',p:'pee',q:'cue',r:'R',s:'ess',t:'tee',u:'U',v:'vee',w:'W',x:'ex',y:'why',z:'zee'};
 
 // Letter SOUNDS (phonemes) as speech-engine-friendly spellings, plus the /x/ notation shown on screen.
 const PHON = {s:'sss',a:'ah',t:'tuh',i:'ih',p:'puh',n:'nnn',c:'kuh',k:'kuh',e:'eh',h:'huh',r:'rrr',m:'mmm',d:'duh',g:'guh',o:'aw',u:'uh',l:'lll',f:'fff',b:'buh',j:'juh',z:'zzz',w:'wuh',v:'vvv',y:'yuh',x:'ks',q:'kwuh'};
@@ -514,10 +516,13 @@ function pickVoice(){
 if (synth) { pickVoice(); synth.onvoiceschanged = pickVoice; }
 
 let speechSeq = 0;
+// A lone capital "A" followed by a word ("A says", "A and") gets read as the word "a" ("uh"). A comma after it
+// makes engines say the letter name. (No spoken sentence in the game starts with the word "A", so this is safe.)
+function speakable(text){ return String(text).replace(/"A"/g, 'A,').replace(/\bA (?=[A-Za-z])/g, 'A, '); }
 function sayOne(text, opt = {}){
   return new Promise(res => {
     if (!synth || !state.settings.voice || !text) return res();
-    const u = new SpeechSynthesisUtterance(text);
+    const u = new SpeechSynthesisUtterance(speakable(text));
     if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = 'en-US';
     u.rate = Math.max(0.5, Math.min(1.4, (opt.rate || 1) * state.settings.rate));
     u.pitch = opt.pitch || 1.15;
@@ -1499,7 +1504,7 @@ function finishLesson(){
   if (gift) gift.addEventListener('click', () => {
     sfx.gift(); confetti(60, ...centerOf(gift));
     $('#giftzone').innerHTML = `<div class="sticker-won">${sticker}</div><div class="instr">A new sticker for your book!</div>`;
-    talk(['A new sticker for your book!']);
+    talk(['Here is a new sticker for your book!']);
   });
   if (levels.length) setTimeout(() => showLevelUp(levels[levels.length - 1], newHat), 1800);
   lesson = null; screen = 'results';
@@ -1603,7 +1608,7 @@ if (/[?&]test=1\b/.test(location.search)) {
     get state(){ return state; }, setState(s){ state = merge(DEFAULTS, s); },
     LETTERS, NAME, PHON, KEY, CVC, WORDS2, WORD_ORDER, WORLDS, HATS, STICKERS, CONF, SAME_SOUND,
     planNew, eligible, worldUnlocked, buildPlan, mkQ, applyAnswer, distractLetters, distractNums, pickPics,
-    boxOf, countBox, weightOf, levelNeed, streakNow, startLesson, go, recordLesson, recentAcc, nChoices,
+    boxOf, countBox, weightOf, levelNeed, streakNow, startLesson, go, recordLesson, recentAcc, nChoices, speakable,
   };
 }
 
