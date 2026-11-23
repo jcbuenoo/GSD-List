@@ -1,0 +1,8 @@
+## Interface: 20506, 20505
+## Title: Melee Range Line
+## Notes: Draws a line from your character to your hostile target. Green when you're in melee range, red when you're not.
+## Author: jcbuenoo
+## Version: 1.0.0
+## SavedVariables: MeleeRangeLineDB
+
+Core.lua
