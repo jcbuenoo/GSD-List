@@ -23,20 +23,18 @@ so when that nameplate isn't on screen there's no line.
   so the addon falls back to duel distance (about 10 yards). That is wider than true melee range. `/mrl status` tells
   you which method you're on.
 
-## Why it never reads positions
+## Limits of what an addon can draw
 
-The Anniversary client blocks addons from measuring nameplates ("Can't measure restricted regions"). Version 1.0.0
-tried to, and threw that error every frame. Since 1.0.1 the line's ends are attached to the nameplates, and the game
-keeps them in place without the addon reading any position. If the game ever blocks something else, the addon prints
-one message in chat and retries every 5 seconds, instead of throwing errors.
-
-## Where the line starts
-
-WoW doesn't tell addons where your character is on screen. So the line starts:
-
-- at your own nameplate, if the Personal Resource Display is on (anchor `auto`, the default), or
-- at a fixed point just below the centre of the screen, which is roughly where your character stands with the
-  default camera. Move it with `/mrl offset <x> <y>` if your camera sits differently.
+- **No line on the ground.** WoW gives addons no way to draw in the 3D world, and it hides other units' map
+  positions. The line is drawn on your screen, from your character to the target's nameplate. Tools that paint
+  lines on the floor are third-party "unlockers", which break the rules and get accounts banned.
+- **Nameplates are locked down.** Addons can't read where a nameplate is, and can't attach anything to one from
+  outside it. Since 1.0.2 the line lives inside the target's nameplate, the way Plater attaches its frames.
+- **Your end is a fixed screen point**, just below the centre of the screen, where your character stands with the
+  default camera. Move it with `/mrl offset <x> <y>`.
+- **Fallback dot.** If the target's nameplate isn't shown, or the game refuses the line, a dot at your character
+  shows the range color instead. If the game refuses something, the addon prints one chat line saying what, and
+  `/mrl status` repeats it.
 
 ## Commands (`/mrl` or `/meleeline`)
 
@@ -47,7 +45,7 @@ WoW doesn't tell addons where your character is on screen. So the line starts:
 | `/mrl alpha <0.1-1>` | Opacity (default 0.9) |
 | `/mrl outline` | Turn the dark border on or off |
 | `/mrl incolor <r g b>` / `outcolor <r g b>` | Colors, as 0–1 or 0–255 |
-| `/mrl anchor auto` / `screen` | Start at your own nameplate, or always at the screen point |
+| `/mrl dot` | Turn the fallback range dot on or off |
 | `/mrl offset <x> <y>` | Move the screen point (default `0 -60`) |
 | `/mrl targetoffset <y>` | Move the target end up or down |
 | `/mrl plates` | Turn on enemy nameplates (not in combat) |
