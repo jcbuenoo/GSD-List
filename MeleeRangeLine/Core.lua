@@ -10,7 +10,7 @@ local DEFAULTS = {
   thickness = 3,
   alpha = 0.9,
   outline = true,            -- dark border under the line so it shows on bright ground
-  anchor = "auto",           -- "auto": your own nameplate if shown, else the screen point; "screen": always the screen point
+  dot = true,                -- range-colored dot at your character when the line can't be drawn
   offsetX = 0,               -- screen point for your character, from the screen centre (UI units)
   offsetY = -60,
   targetOffsetY = 0,         -- move the target end up/down from the bottom of its nameplate
@@ -30,6 +30,7 @@ local MELEE_SPELLS = {
   SHAMAN  = {17364},                     -- Stormstrike (talent)
 }
 
+local VERSION = "1.0.2"
 local RANGE_INTERVAL = 0.05 -- seconds between range checks; the line itself moves every frame
 
 local function Print(msg)
@@ -96,45 +97,52 @@ end
 
 ---------------------------------------------------------------------------
 -- Drawing
+--
+-- This client restricts nameplates: addons can't read their position ("Can't measure restricted regions"),
+-- and a region outside a nameplate can't be anchored to it ("Not allowed to depend on nameplate").
+-- So the line lives on a holder frame that we parent *inside* the target's nameplate (the way nameplate
+-- addons like Plater attach their frames). Its far end anchors to that nameplate; its near end anchors
+-- to a fixed screen point for your character. Nothing is ever measured.
 ---------------------------------------------------------------------------
+-- canvas: on-screen root; owns the OnUpdate and the fallback dot.
 local canvas = CreateFrame("Frame", "MeleeRangeLineCanvas", UIParent)
 canvas:SetAllPoints(UIParent)
 canvas:SetFrameStrata("BACKGROUND")
 canvas:EnableMouse(false)
-
-local shadow = canvas:CreateLine(nil, "BACKGROUND")
-local line = canvas:CreateLine(nil, "ARTWORK")
-shadow:SetColorTexture(0, 0, 0, 1)
 canvas:Hide()
 
-MRL.canvas, MRL.line, MRL.shadow = canvas, line, shadow
+-- holder: moved into the target's nameplate. Ignores the nameplate's scale and fade so the line looks the same on every target.
+local holder = CreateFrame("Frame", nil, canvas)
+holder:SetIgnoreParentScale(true)
+holder:SetIgnoreParentAlpha(true)
+holder:EnableMouse(false)
+holder:Hide()
 
--- This client won't let addons read a nameplate's position ("Can't measure restricted regions"),
--- so the line is never measured: its ends are anchored straight to the nameplates and the game keeps them in place.
-local function GetPlate(unit)
+local shadow = holder:CreateLine(nil, "BACKGROUND")
+local line = holder:CreateLine(nil, "ARTWORK")
+shadow:SetColorTexture(0, 0, 0, 1)
+
+-- Fallback dot at your character's screen point. Shows the range color when the line can't be drawn
+-- (target's nameplate off screen / out of nameplate range, or the game refuses the line).
+local dot = canvas:CreateTexture(nil, "ARTWORK")
+dot:SetSize(14, 14)
+dot:SetColorTexture(1, 1, 1, 1)
+local dotMask = canvas:CreateMaskTexture()
+dotMask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+dotMask:SetAllPoints(dot)
+dot:AddMaskTexture(dotMask)
+dot:Hide()
+
+MRL.canvas, MRL.holder, MRL.line, MRL.shadow, MRL.dot = canvas, holder, line, shadow, dot
+
+
+local function GetTargetPlate()
   if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then return nil end
-  local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
+  local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, "target")
   if not ok or not plate then return nil end
   local okVis, visible = pcall(plate.IsVisible, plate)
   if okVis and Usable(visible) and not visible then return nil end
   return plate
-end
-
--- Returns the anchor for your end of the line: (point, region, x, y).
-function MRL:GetPlayerAnchor()
-  local db = self.db
-  if db.anchor == "auto" then
-    local plate = GetPlate("player") -- your personal resource display, if it's on
-    if plate then return "CENTER", plate, 0, 0 end
-  end
-  return "CENTER", canvas, db.offsetX, db.offsetY
-end
-
--- Returns the anchor for the target's end, or nil when its nameplate isn't shown.
-function MRL:GetTargetAnchor()
-  local plate = GetPlate("target")
-  if not plate then return nil end
-  return "BOTTOM", plate, 0, self.db.targetOffsetY -- bottom of the nameplate sits just above the target's head
 end
 
 local function IsHostileTarget()
@@ -147,40 +155,85 @@ function MRL:ApplyStyle()
   shadow:SetThickness(db.thickness + 2)
   shadow:SetAlpha(db.alpha * 0.6)
   shadow:SetShown(db.outline)
+  self:ResetAnchors()
 end
 
 function MRL:SetColor(state)
   local c = (state == true and self.db.inColor) or (state == false and self.db.outColor) or self.db.unknownColor
   line:SetColorTexture(c[1], c[2], c[3], self.db.alpha)
+  dot:SetVertexColor(c[1], c[2], c[3], self.db.alpha)
 end
 
 local rangeElapsed = 0
 MRL.state, MRL.method, MRL.dirty = nil, nil, true
 
--- Re-anchor only when something changed; anchored lines follow their nameplates on their own.
-local lastKey = {}
-local function Anchor(tp, tr, tx, ty, sp, sr, sx, sy)
-  if lastKey[1] == tr and lastKey[2] == tx and lastKey[3] == ty and lastKey[4] == sr
-     and lastKey[5] == sx and lastKey[6] == sy and lastKey[7] == sp then return end
-  lastKey[1], lastKey[2], lastKey[3], lastKey[4], lastKey[5], lastKey[6], lastKey[7] = tr, tx, ty, sr, sx, sy, sp
-  line:ClearAllPoints(); shadow:ClearAllPoints()
-  line:SetStartPoint(sp, sr, sx, sy); line:SetEndPoint(tp, tr, tx, ty)
-  shadow:SetStartPoint(sp, sr, sx, sy); shadow:SetEndPoint(tp, tr, tx, ty)
+-- Attach the holder to a nameplate and anchor the line. Only redone when the plate or the settings change.
+local attachedPlate, attachedKey
+local blockedPlates = setmetatable({}, {__mode = "k"}) -- plates the game refused, skipped until the target changes
+
+function MRL:ResetAnchors() attachedPlate, attachedKey = nil, nil end
+
+function MRL:Detach()
+  holder:Hide()
+  holder:ClearAllPoints()
+  holder:SetParent(canvas)
+  attachedPlate, attachedKey = nil, nil
 end
-function MRL:ResetAnchors() wipe(lastKey) end
+
+function MRL:Attach(plate)
+  local db = self.db
+  local key = db.offsetX .. ":" .. db.offsetY .. ":" .. db.targetOffsetY .. ":" .. tostring(db.outline)
+  if attachedPlate == plate and attachedKey == key then return true end
+  if blockedPlates[plate] then return false end
+  local ok, err = pcall(function()
+    holder:SetParent(plate)
+    holder:SetIgnoreParentScale(true)
+    holder:SetIgnoreParentAlpha(true)
+    holder:SetScale(UIParent:GetScale())
+    holder:ClearAllPoints()
+    holder:SetAllPoints(plate)
+    line:ClearAllPoints(); shadow:ClearAllPoints()
+    line:SetStartPoint("CENTER", UIParent, db.offsetX, db.offsetY)
+    line:SetEndPoint("BOTTOM", holder, 0, db.targetOffsetY)
+    shadow:SetStartPoint("CENTER", UIParent, db.offsetX, db.offsetY)
+    shadow:SetEndPoint("BOTTOM", holder, 0, db.targetOffsetY)
+  end)
+  if not ok then
+    blockedPlates[plate] = true
+    self:Detach()
+    self:Report(err)
+    return false
+  end
+  attachedPlate, attachedKey = plate, key
+  holder:Show()
+  return true
+end
+
+local reported = {}
+function MRL:Report(err)
+  err = tostring(err)
+  if reported[err] then return end
+  reported[err] = true
+  self.lastError = err
+  Print("the game refused the line, showing the range dot instead. Please report this: " .. err)
+end
+
+function MRL:ShowDot(show)
+  if show and self.db.dot then
+    dot:ClearAllPoints()
+    dot:SetPoint("CENTER", canvas, "CENTER", self.db.offsetX, self.db.offsetY)
+    dot:Show()
+  else
+    dot:Hide()
+  end
+end
 
 function MRL:Update(elapsed)
   if not IsHostileTarget() then
-    line:Hide(); shadow:Hide()
+    if attachedPlate then self:Detach() end
+    self:ShowDot(false)
     return
   end
-  local tp, tr, tx, ty = self:GetTargetAnchor()
-  if not tp then
-    -- The target's nameplate isn't shown (too far, or enemy nameplates are off).
-    line:Hide(); shadow:Hide()
-    return
-  end
-  local sp, sr, sx, sy = self:GetPlayerAnchor()
 
   rangeElapsed = rangeElapsed + (elapsed or 0)
   if rangeElapsed >= RANGE_INTERVAL or self.dirty then
@@ -190,32 +243,35 @@ function MRL:Update(elapsed)
     self:SetColor(state)
   end
 
-  Anchor(tp, tr, tx, ty, sp, sr, sx, sy)
-  line:Show()
-  shadow:SetShown(self.db.outline)
+  local plate = GetTargetPlate()
+  if plate and self:Attach(plate) then
+    line:Show()
+    shadow:SetShown(self.db.outline)
+    self:ShowDot(false)
+  else
+    if attachedPlate then self:Detach() end
+    self:ShowDot(true)
+  end
 end
 
--- If the game blocks something, report it once in chat and pause for a few seconds instead of
--- throwing an error every frame.
-local pausedUntil, reported = 0, {}
+-- Anything else the game blocks: report once, pause 5 s, never throw every frame.
+local pausedUntil = 0
 canvas:SetScript("OnUpdate", function(_, elapsed)
   local now = GetTime()
   if now < pausedUntil then return end
   local ok, err = pcall(MRL.Update, MRL, elapsed)
   if not ok then
-    line:Hide(); shadow:Hide(); MRL:ResetAnchors()
+    pcall(MRL.Detach, MRL)
+    dot:Hide()
     pausedUntil = now + 5
-    err = tostring(err)
-    if not reported[err] then
-      reported[err] = true
-      Print("the game blocked the line (retrying every 5 s). Please report this: " .. err)
-    end
+    MRL:Report(err)
   end
 end)
 
 function MRL:SetEnabled(on)
   self.db.enabled = on and true or false
   canvas:SetShown(self.db.enabled)
+  if not self.db.enabled then self:Detach() end
 end
 
 ---------------------------------------------------------------------------
@@ -229,10 +285,11 @@ events:RegisterEvent("PLAYER_TARGET_CHANGED")
 events:SetScript("OnEvent", function(_, event, arg1)
   if event == "ADDON_LOADED" and arg1 == ADDON then
     MeleeRangeLineDB = CopyDefaults(DEFAULTS, type(MeleeRangeLineDB) == "table" and MeleeRangeLineDB or {})
-    if MeleeRangeLineDB.anchor ~= "auto" and MeleeRangeLineDB.anchor ~= "screen" then MeleeRangeLineDB.anchor = "auto" end
+    MeleeRangeLineDB.anchor = nil -- 1.0.0/1.0.1 setting; your own nameplate can't be used as an anchor
     MRL.db = MeleeRangeLineDB
     MRL:ApplyStyle()
   elseif event == "PLAYER_LOGIN" then
+    Print("v" .. VERSION .. " loaded. /mrl for options.")
     MRL:RefreshSpells()
     MRL:SetEnabled(MRL.db.enabled)
     if GetCVar("nameplateShowEnemies") == "0" then
@@ -241,6 +298,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
   elseif event == "SPELLS_CHANGED" then
     MRL:RefreshSpells()
   elseif event == "PLAYER_TARGET_CHANGED" then
+    wipe(blockedPlates)
     MRL.dirty = true -- recolor on the next frame instead of waiting for the throttle
   end
 end)
@@ -264,7 +322,7 @@ local function Help()
   Print("  /mrl alpha <0.1-1> - line opacity")
   Print("  /mrl outline - toggle the dark border")
   Print("  /mrl incolor <r g b> | outcolor <r g b> - colors (0-1 or 0-255)")
-  Print("  /mrl anchor auto | screen - start the line at your own nameplate (auto) or a fixed screen point")
+  Print("  /mrl dot - toggle the range dot shown when the line can't be drawn")
   Print("  /mrl offset <x> <y> - move the screen point for your character (from screen centre)")
   Print("  /mrl targetoffset <y> - move the target end up or down")
   Print("  /mrl plates - turn enemy nameplates on (the line needs them)")
@@ -273,8 +331,9 @@ end
 
 local function Status()
   local db = MRL.db
-  Print(("%s, thickness %d, alpha %.2f, anchor %s, offset %d,%d, target offset %d"):format(
-    db.enabled and "on" or "off", db.thickness, db.alpha, db.anchor, db.offsetX, db.offsetY, db.targetOffsetY))
+  Print(("v%s: %s, thickness %d, alpha %.2f, dot %s, offset %d,%d, target offset %d"):format(
+    VERSION, db.enabled and "on" or "off", db.thickness, db.alpha, db.dot and "on" or "off", db.offsetX, db.offsetY, db.targetOffsetY))
+  if MRL.lastError then Print("last blocked: " .. MRL.lastError) end
   if #knownSpells > 0 then
     Print("range check: exact, using your melee abilities.")
   else
@@ -305,18 +364,16 @@ SlashCmdList.MELEERANGELINE = function(msg)
     local c = ParseColor(rest)
     if c then db[cmd == "incolor" and "inColor" or "outColor"] = c; MRL.dirty = true; Print(cmd .. " set.")
     else Print("usage: /mrl " .. cmd .. " <r g b>, e.g. /mrl " .. cmd .. " 0 1 0") end
-  elseif cmd == "anchor" then
-    rest = rest:lower()
-    if rest == "auto" or rest == "screen" then db.anchor = rest; MRL:ResetAnchors(); Print("anchor " .. rest .. ".")
-    else Print("usage: /mrl anchor auto | screen") end
+  elseif cmd == "dot" then
+    db.dot = not db.dot; Print("dot " .. (db.dot and "on." or "off."))
   elseif cmd == "offset" then
     local x, y = rest:match("^(%S+)%s+(%S+)$")
     x, y = tonumber(x), tonumber(y)
-    if x and y then db.offsetX, db.offsetY = math.floor(x + 0.5), math.floor(y + 0.5); Print(("offset %d,%d."):format(db.offsetX, db.offsetY))
+    if x and y then db.offsetX, db.offsetY = math.floor(x + 0.5), math.floor(y + 0.5); MRL:ResetAnchors(); Print(("offset %d,%d."):format(db.offsetX, db.offsetY))
     else Print("usage: /mrl offset <x> <y>, e.g. /mrl offset 0 -60") end
   elseif cmd == "targetoffset" then
     local y = tonumber(rest)
-    if y then db.targetOffsetY = math.floor(y + 0.5); Print("target offset " .. db.targetOffsetY .. ".")
+    if y then db.targetOffsetY = math.floor(y + 0.5); MRL:ResetAnchors(); Print("target offset " .. db.targetOffsetY .. ".")
     else Print("usage: /mrl targetoffset <y>") end
   elseif cmd == "plates" then
     if InCombatLockdown() then Print("can't change nameplates in combat.")
