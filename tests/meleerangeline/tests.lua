@@ -32,19 +32,27 @@ end)
 
 T("no target / friendly / dead target -> line hidden", function()
   UNITS.target = nil; frame(); assert(not line._shown)
-  UNITS.target = {hostile=false, dist=3, guid="F"}; NP.target = makePlate(900, 700, 680); frame(); assert(not line._shown)
+  UNITS.target = {hostile=false, dist=3, guid="F"}; NP.target = makePlate(); frame(); assert(not line._shown)
   UNITS.target = {hostile=true, dead=true, dist=3, guid="D"}; frame(); assert(not line._shown and not shadow._shown)
 end)
 
-T("hostile target in melee range -> green line from screen anchor to nameplate bottom", function()
-  UNITS.target = {hostile=true, dist=3, guid="H1"}; NP.target = makePlate(900, 700, 680)
+T("hostile target in melee range -> green line anchored to the nameplate, never measured", function()
+  UNITS.target = {hostile=true, dist=3, guid="H1"}; NP.target = makePlate()
   SPELLRANGE[1752] = true
   fire("PLAYER_TARGET_CHANGED"); frame(0.001)
   assert(line._shown and shadow._shown)
   assert(near(col()[1], 0.1) and near(col()[2], 1.0), "expected green")
-  assert(line._start[1] == 960 and line._start[2] == 540 - 60, line._start[1] .. "," .. line._start[2])
-  assert(line._end[1] == 900 and line._end[2] == 680)
+  assert(line._start[1] == "CENTER" and line._start[2] == canvas and line._start[3] == 0 and line._start[4] == -60)
+  assert(line._end[1] == "BOTTOM" and line._end[2] == NP.target and line._end[4] == 0)
+  assert(shadow._end[2] == NP.target)
   assert(MRL.method == "spell")
+end)
+
+T("anchors are set once, not every frame", function()
+  local n = line._anchorCalls
+  for i = 1, 50 do frame(0.016) end
+  assert(line._anchorCalls == n, "re-anchored " .. (line._anchorCalls - n) .. " times")
+  NP.target = makePlate(); frame(); assert(line._anchorCalls == n + 1 and line._end[2] == NP.target)
 end)
 
 T("out of range -> red after throttle; not re-checked every frame", function()
@@ -82,47 +90,61 @@ T("class without melee spells (mage) uses approx; status says so", function()
   CHAT = {}; slash("status"); assert(chatHas("exact"))
 end)
 
-T("CheckInteractDistance error is caught -> yellow unknown", function()
-  KNOWN = {}; fire("SPELLS_CHANGED")
-  local old = W.CheckInteractDistance
+T("range API errors are caught -> yellow unknown", function()
+  local oldSR, oldCID = W.C_Spell.IsSpellInRange, W.CheckInteractDistance
+  W.C_Spell.IsSpellInRange = function() error("blocked") end
   W.CheckInteractDistance = function() error("blocked") end
   MRL.dirty = true; frame(0.001)
-  W.CheckInteractDistance = old
+  W.C_Spell.IsSpellInRange, W.CheckInteractDistance = oldSR, oldCID
   assert(MRL.state == nil and line._shown and near(col()[1], 1.0) and near(col()[2], 0.85))
-  KNOWN = {[1752]=true}; fire("SPELLS_CHANGED")
 end)
 
-T("nameplate off screen / hidden -> line hidden", function()
+T("secret range answers are treated as unknown (no compare error)", function()
+  local secret = {}; SECRETS[secret] = true
+  local oldSR, oldCID = W.C_Spell.IsSpellInRange, W.CheckInteractDistance
+  W.C_Spell.IsSpellInRange = function() return secret end
+  W.CheckInteractDistance = function() return secret end
+  MRL.dirty = true; frame(0.001)
+  W.C_Spell.IsSpellInRange, W.CheckInteractDistance = oldSR, oldCID
+  assert(MRL.state == nil and line._shown and near(col()[2], 0.85))
+end)
+
+T("nameplate missing / hidden -> line hidden", function()
   NP.target = nil; frame(); assert(not line._shown)
-  NP.target = makePlate(900, 700, 680); NP.target._shown = false; frame(); assert(not line._shown)
-  NP.target = makePlate(nil, nil, nil); frame(); assert(not line._shown)
-  NP.target = makePlate(900, 700, 680); frame(); assert(line._shown)
+  NP.target = makePlate(); NP.target._shown = false; frame(); assert(not line._shown)
+  NP.target = makePlate(); frame(); assert(line._shown)
 end)
 
-T("nameplate scale converts to canvas units", function()
-  NP.target = makePlate(450, 350, 340, 2); frame()
-  assert(line._end[1] == 900 and line._end[2] == 680)
-  canvas._escale = 0.5; frame()
-  assert(line._end[1] == 1800 and line._end[2] == 1360)
-  assert(line._start[1] == 960, "screen anchor uses canvas size, not scale")
-  canvas._escale = nil
-end)
-
-T("auto anchor uses own nameplate (centre); screen anchor ignores it", function()
-  NP.player = makePlate(1000, 400, 380); frame()
-  assert(line._start[1] == 1000 and line._start[2] == 400)
-  slash("anchor screen"); frame(); assert(line._start[1] == 960 and line._start[2] == 480)
-  slash("anchor AUTO"); frame(); assert(line._start[1] == 1000)
-  NP.player._shown = false; frame(); assert(line._start[1] == 960)
+T("auto anchor uses own nameplate; screen anchor ignores it", function()
+  NP.player = makePlate(); frame()
+  assert(line._start[1] == "CENTER" and line._start[2] == NP.player)
+  slash("anchor screen"); frame(); assert(line._start[2] == canvas and line._start[4] == -60)
+  slash("anchor AUTO"); frame(); assert(line._start[2] == NP.player)
+  NP.player._shown = false; frame(); assert(line._start[2] == canvas)
   NP.player = nil
   CHAT = {}; slash("anchor sideways"); assert(chatHas("usage"))
 end)
 
+T("blocked API -> one chat report, 5 s pause, no error spam, then recovers", function()
+  local old = W.UnitCanAttack
+  W.UnitCanAttack = function() error("Action[Something] failed because[restricted]") end
+  CHAT = {}
+  for i = 1, 20 do frame(0.016) end
+  local reports = 0; for _, m in ipairs(CHAT) do if m:find("blocked", 1, true) then reports = reports + 1 end end
+  assert(reports == 1, reports)
+  assert(not line._shown)
+  W.UnitCanAttack = old
+  frame(); assert(not line._shown, "still paused")
+  CLOCK = CLOCK + 6; frame(); assert(line._shown, "should recover after pause")
+end)
+
 T("offset / targetoffset", function()
-  slash("offset 10 -100"); frame(); assert(line._start[1] == 970 and line._start[2] == 440)
-  slash("targetoffset -25"); frame(); assert(line._end[2] == 680 - 25)
+  slash("anchor screen")
+  slash("offset 10 -100"); frame(); assert(line._start[3] == 10 and line._start[4] == -100)
+  slash("targetoffset -25"); frame(); assert(line._end[4] == -25)
   CHAT = {}; slash("offset 5"); assert(chatHas("usage"))
   CHAT = {}; slash("targetoffset x"); assert(chatHas("usage"))
+  slash("anchor auto")
 end)
 
 T("thickness / alpha / outline / colors validation", function()

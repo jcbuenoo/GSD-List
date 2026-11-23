@@ -23,6 +23,13 @@ so when that nameplate isn't on screen there's no line.
   so the addon falls back to duel distance (about 10 yards). That is wider than true melee range. `/mrl status` tells
   you which method you're on.
 
+## Why it never reads positions
+
+The Anniversary client blocks addons from measuring nameplates ("Can't measure restricted regions"). Version 1.0.0
+tried to, and threw that error every frame. Since 1.0.1 the line's ends are attached to the nameplates, and the game
+keeps them in place without the addon reading any position. If the game ever blocks something else, the addon prints
+one message in chat and retries every 5 seconds, instead of throwing errors.
+
 ## Where the line starts
 
 WoW doesn't tell addons where your character is on screen. So the line starts:

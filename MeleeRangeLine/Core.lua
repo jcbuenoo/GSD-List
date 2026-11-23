@@ -67,10 +67,17 @@ function MRL:RefreshSpells()
   end
 end
 
+-- Restricted values ("secrets") can't be compared by addons in this client; treat them as "can't tell".
+local function Usable(v)
+  if v == nil then return false end
+  if issecretvalue and issecretvalue(v) then return false end
+  return true
+end
+
 local function SpellInRange(id, unit)
-  if C_Spell and C_Spell.IsSpellInRange then
-    return C_Spell.IsSpellInRange(id, unit)
-  end
+  if not (C_Spell and C_Spell.IsSpellInRange) then return nil end
+  local ok, r = pcall(C_Spell.IsSpellInRange, id, unit)
+  if ok and Usable(r) then return r end
   return nil
 end
 
@@ -83,7 +90,7 @@ function MRL:InMeleeRange(unit)
   end
   -- No melee ability (casters, low-level paladins/shamans): fall back to duel distance (~9.9 yd).
   local ok, r = pcall(CheckInteractDistance, unit, 3)
-  if ok and r ~= nil then return (r == true or r == 1), "approx" end
+  if ok and Usable(r) then return (r == true or r == 1), "approx" end
   return nil, nil
 end
 
@@ -102,36 +109,32 @@ canvas:Hide()
 
 MRL.canvas, MRL.line, MRL.shadow = canvas, line, shadow
 
--- A frame's centre (x, y) and bottom edge, in canvas units.
-local function FramePoint(frame)
-  if not frame or not frame:IsVisible() then return nil end
-  local cx, cy = frame:GetCenter()
-  local bottom = frame:GetBottom()
-  if not cx or not cy or not bottom then return nil end
-  local k = frame:GetEffectiveScale() / canvas:GetEffectiveScale()
-  return cx * k, cy * k, bottom * k
-end
-
+-- This client won't let addons read a nameplate's position ("Can't measure restricted regions"),
+-- so the line is never measured: its ends are anchored straight to the nameplates and the game keeps them in place.
 local function GetPlate(unit)
   if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then return nil end
   local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
-  if ok then return plate end
-  return nil
+  if not ok or not plate then return nil end
+  local okVis, visible = pcall(plate.IsVisible, plate)
+  if okVis and Usable(visible) and not visible then return nil end
+  return plate
 end
 
-function MRL:GetPlayerPoint()
+-- Returns the anchor for your end of the line: (point, region, x, y).
+function MRL:GetPlayerAnchor()
   local db = self.db
   if db.anchor == "auto" then
-    local x, y = FramePoint(GetPlate("player")) -- your personal resource display, if it's on
-    if x then return x, y end
+    local plate = GetPlate("player") -- your personal resource display, if it's on
+    if plate then return "CENTER", plate, 0, 0 end
   end
-  return canvas:GetWidth() / 2 + db.offsetX, canvas:GetHeight() / 2 + db.offsetY
+  return "CENTER", canvas, db.offsetX, db.offsetY
 end
 
-function MRL:GetTargetPoint()
-  local x, _, bottom = FramePoint(GetPlate("target"))
-  if not x then return nil end
-  return x, bottom + self.db.targetOffsetY -- bottom of the nameplate sits just above the target's head
+-- Returns the anchor for the target's end, or nil when its nameplate isn't shown.
+function MRL:GetTargetAnchor()
+  local plate = GetPlate("target")
+  if not plate then return nil end
+  return "BOTTOM", plate, 0, self.db.targetOffsetY -- bottom of the nameplate sits just above the target's head
 end
 
 local function IsHostileTarget()
@@ -154,18 +157,30 @@ end
 local rangeElapsed = 0
 MRL.state, MRL.method, MRL.dirty = nil, nil, true
 
+-- Re-anchor only when something changed; anchored lines follow their nameplates on their own.
+local lastKey = {}
+local function Anchor(tp, tr, tx, ty, sp, sr, sx, sy)
+  if lastKey[1] == tr and lastKey[2] == tx and lastKey[3] == ty and lastKey[4] == sr
+     and lastKey[5] == sx and lastKey[6] == sy and lastKey[7] == sp then return end
+  lastKey[1], lastKey[2], lastKey[3], lastKey[4], lastKey[5], lastKey[6], lastKey[7] = tr, tx, ty, sr, sx, sy, sp
+  line:ClearAllPoints(); shadow:ClearAllPoints()
+  line:SetStartPoint(sp, sr, sx, sy); line:SetEndPoint(tp, tr, tx, ty)
+  shadow:SetStartPoint(sp, sr, sx, sy); shadow:SetEndPoint(tp, tr, tx, ty)
+end
+function MRL:ResetAnchors() wipe(lastKey) end
+
 function MRL:Update(elapsed)
   if not IsHostileTarget() then
     line:Hide(); shadow:Hide()
     return
   end
-  local tx, ty = self:GetTargetPoint()
-  if not tx then
-    -- The target's nameplate isn't on screen (target behind the camera, too far, or enemy nameplates are off).
+  local tp, tr, tx, ty = self:GetTargetAnchor()
+  if not tp then
+    -- The target's nameplate isn't shown (too far, or enemy nameplates are off).
     line:Hide(); shadow:Hide()
     return
   end
-  local px, py = self:GetPlayerPoint()
+  local sp, sr, sx, sy = self:GetPlayerAnchor()
 
   rangeElapsed = rangeElapsed + (elapsed or 0)
   if rangeElapsed >= RANGE_INTERVAL or self.dirty then
@@ -175,17 +190,28 @@ function MRL:Update(elapsed)
     self:SetColor(state)
   end
 
-  line:SetStartPoint("BOTTOMLEFT", canvas, px, py)
-  line:SetEndPoint("BOTTOMLEFT", canvas, tx, ty)
+  Anchor(tp, tr, tx, ty, sp, sr, sx, sy)
   line:Show()
-  if self.db.outline then
-    shadow:SetStartPoint("BOTTOMLEFT", canvas, px, py)
-    shadow:SetEndPoint("BOTTOMLEFT", canvas, tx, ty)
-    shadow:Show()
-  end
+  shadow:SetShown(self.db.outline)
 end
 
-canvas:SetScript("OnUpdate", function(_, elapsed) MRL:Update(elapsed) end)
+-- If the game blocks something, report it once in chat and pause for a few seconds instead of
+-- throwing an error every frame.
+local pausedUntil, reported = 0, {}
+canvas:SetScript("OnUpdate", function(_, elapsed)
+  local now = GetTime()
+  if now < pausedUntil then return end
+  local ok, err = pcall(MRL.Update, MRL, elapsed)
+  if not ok then
+    line:Hide(); shadow:Hide(); MRL:ResetAnchors()
+    pausedUntil = now + 5
+    err = tostring(err)
+    if not reported[err] then
+      reported[err] = true
+      Print("the game blocked the line (retrying every 5 s). Please report this: " .. err)
+    end
+  end
+end)
 
 function MRL:SetEnabled(on)
   self.db.enabled = on and true or false
@@ -281,7 +307,7 @@ SlashCmdList.MELEERANGELINE = function(msg)
     else Print("usage: /mrl " .. cmd .. " <r g b>, e.g. /mrl " .. cmd .. " 0 1 0") end
   elseif cmd == "anchor" then
     rest = rest:lower()
-    if rest == "auto" or rest == "screen" then db.anchor = rest; Print("anchor " .. rest .. ".")
+    if rest == "auto" or rest == "screen" then db.anchor = rest; MRL:ResetAnchors(); Print("anchor " .. rest .. ".")
     else Print("usage: /mrl anchor auto | screen") end
   elseif cmd == "offset" then
     local x, y = rest:match("^(%S+)%s+(%S+)$")
