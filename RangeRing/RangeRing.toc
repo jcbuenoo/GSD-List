@@ -1,0 +1,8 @@
+## Interface: 20506, 20505
+## Title: Range Ring
+## Notes: A ring around your character that grows with the distance to your hostile target, colored by melee, dead zone, in range and out of range.
+## Author: jcbuenoo
+## Version: 1.0.0
+## SavedVariables: RangeRingDB
+
+Core.lua
